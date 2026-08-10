@@ -13,7 +13,6 @@ use App\Http\Controllers\Web\DosenBimbinganExportController;
 use App\Http\Controllers\Web\DosenExportController;
 use App\Http\Controllers\Web\KrsCetakController;
 use App\Http\Controllers\Web\LoginController;
-use App\Http\Controllers\Web\MahasiswaDashboardController;
 use App\Http\Controllers\Web\MahasiswaExportController;
 use App\Http\Controllers\Web\NilaiExportController;
 use App\Http\Controllers\Web\SuperadminEnvConfigController;
@@ -162,6 +161,7 @@ use App\Livewire\Dosen\UjianSidang\Index as DosenUjianSidangIndex;
 use App\Livewire\Dosen\UjianSidang\Show as DosenUjianSidangShow;
 use App\Livewire\Mahasiswa\BimbinganTugasAkhir\Index as MahasiswaBimbinganTugasAkhirIndex;
 use App\Livewire\Mahasiswa\BimbinganTugasAkhir\Show as MahasiswaBimbinganTugasAkhirShow;
+use App\Livewire\Mahasiswa\Dashboard as MahasiswaDashboard;
 use App\Livewire\Mahasiswa\Jadwal\Detail as MahasiswaJadwalDetail;
 use App\Livewire\Mahasiswa\Jadwal\Index as MahasiswaJadwalIndex;
 use App\Livewire\Mahasiswa\Kehadiran\Index as MahasiswaKehadiranIndex;
@@ -306,11 +306,10 @@ Route::middleware(['auth', 'role.admin.prodi.web'])->group(function (): void {
 });
 
 // Area mahasiswa (sidebar, lihat resources/views/layouts/mahasiswa.blade.php +
-// mahasiswa/partials/sidebar). Dashboard & Profil sudah fungsional (meski dashboard masih
-// placeholder); modul lain masih menunjuk ke 'mahasiswa.coming-soon' sampai masing-masing
-// diport dari siak-frontend (lihat .claude/skills/siak-livewire-module).
+// mahasiswa/partials/sidebar). Semua modul sudah diport dari siak-frontend (lihat
+// .claude/skills/siak-livewire-module).
 Route::middleware(['auth', 'role.mahasiswa.web'])->group(function (): void {
-    Route::get('/mahasiswa/dashboard', [MahasiswaDashboardController::class, 'index'])->name('mahasiswa.dashboard');
+    Route::livewire('/mahasiswa/dashboard', MahasiswaDashboard::class)->name('mahasiswa.dashboard');
     Route::livewire('/mahasiswa/profil', MahasiswaProfil::class)->name('mahasiswa.profil');
 
     // Rute literal ('/mahasiswa/jadwal') harus di atas rute berparameter ('{id}').
