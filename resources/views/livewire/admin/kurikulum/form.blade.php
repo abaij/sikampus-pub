@@ -87,12 +87,37 @@
             @elseif ($matkulOptions->isEmpty())
                 <p class="text-sm text-neutral-500">Tidak ada mata kuliah untuk prodi ini.</p>
             @else
-                <p class="mb-4 text-sm text-neutral-500">Centang mata kuliah yang termasuk dalam kurikulum ini, lalu atur semester rekomendasi dan status wajib/pilihan.</p>
+                <div class="mb-4 flex items-center justify-between gap-3">
+                    <p class="text-sm text-neutral-500">Centang mata kuliah yang termasuk dalam kurikulum ini, lalu atur semester rekomendasi dan status wajib/pilihan.</p>
+                    @php
+                        $matkulOptionIds = $matkulOptions->pluck('id')->all();
+                        $isAllMatkulSelected = count($matkulOptionIds) > 0 && empty(array_diff($matkulOptionIds, $selectedMatkulIds));
+                    @endphp
+                    <button
+                        type="button"
+                        wire:click="toggleSelectAllMatkul"
+                        class="shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 shadow-border"
+                    >
+                        {{ $isAllMatkulSelected ? 'Hapus Semua' : 'Pilih Semua' }}
+                    </button>
+                </div>
                 <div class="max-h-96 overflow-y-auto overflow-x-auto rounded-xl shadow-border">
                     <table class="w-full text-left text-sm">
                         <thead class="sticky top-0 bg-neutral-50 text-xs font-semibold uppercase tracking-wide text-neutral-500">
                             <tr>
-                                <th class="px-4 py-3"></th>
+                                <th class="px-4 py-3">
+                                    {{-- wire:key berubah setiap $isAllMatkulSelected berganti supaya Livewire mengganti
+                                    elemen ini (bukan sekadar patch atribut) — checkbox tanpa wire:model tidak otomatis
+                                    disinkronkan propertinya oleh morph, dan browser mengabaikan perubahan atribut
+                                    "checked" begitu elemen pernah disentuh user. Recreate elemen menghindari itu. --}}
+                                    <input
+                                        type="checkbox"
+                                        wire:click="toggleSelectAllMatkul"
+                                        wire:key="matkul-select-all-{{ $isAllMatkulSelected ? 1 : 0 }}"
+                                        @checked($isAllMatkulSelected)
+                                        class="size-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900/10"
+                                    />
+                                </th>
                                 <th class="px-4 py-3">Kode</th>
                                 <th class="px-4 py-3">Nama</th>
                                 <th class="px-4 py-3">SKS</th>

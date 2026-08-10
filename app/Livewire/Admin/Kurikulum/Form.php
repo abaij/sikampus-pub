@@ -105,6 +105,27 @@ class Form extends Component
     }
 
     /**
+     * Centang/hapus centang semua mata kuliah yang tersedia untuk prodi terpilih sekaligus.
+     * Query sama persis dengan yang dipakai render() untuk $matkulOptions supaya "semua" di
+     * sini konsisten dengan daftar yang tampil di tabel.
+     */
+    public function toggleSelectAllMatkul(): void
+    {
+        if (! $this->id_prodi) {
+            return;
+        }
+
+        $allIds = Matkul::where('id_prodi', $this->id_prodi)->whereNull('deleted_at')->pluck('id')->all();
+
+        if (empty(array_diff($allIds, $this->selectedMatkulIds))) {
+            $this->selectedMatkulIds = array_values(array_diff($this->selectedMatkulIds, $allIds));
+        } else {
+            $this->selectedMatkulIds = array_values(array_unique(array_merge($this->selectedMatkulIds, $allIds)));
+            $this->updatedSelectedMatkulIds();
+        }
+    }
+
+    /**
      * Rule sama persis dengan KurikulumController::store/update.
      */
     protected function rules(): array

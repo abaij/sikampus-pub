@@ -52,6 +52,28 @@ it('creates a kurikulum with selected mata kuliah', function () {
     expect((bool) $pivotB->is_wajib)->toBeFalse();
 });
 
+it('toggles select all / deselect all mata kuliah for the chosen prodi', function () {
+    $admin = adminUser();
+    $prodi = Prodi::factory()->create();
+    $otherProdi = Prodi::factory()->create();
+    $matkulA = Matkul::factory()->create(['id_prodi' => $prodi->id, 'kode' => 'MK001', 'semester' => 2]);
+    $matkulB = Matkul::factory()->create(['id_prodi' => $prodi->id, 'kode' => 'MK002', 'semester' => 3]);
+    $matkulOther = Matkul::factory()->create(['id_prodi' => $otherProdi->id, 'kode' => 'MK900']);
+
+    $component = Livewire::actingAs($admin)
+        ->test(Form::class)
+        ->set('id_prodi', $prodi->id)
+        ->call('toggleSelectAllMatkul');
+
+    expect($component->get('selectedMatkulIds'))->toEqualCanonicalizing([$matkulA->id, $matkulB->id]);
+    expect($component->get('matkulDetail'))->toHaveKeys([$matkulA->id, $matkulB->id]);
+    expect($component->get('matkulDetail.'.$matkulA->id.'.semester_rekomendasi'))->toBe('2');
+    expect($component->get('selectedMatkulIds'))->not->toContain($matkulOther->id);
+
+    $component->call('toggleSelectAllMatkul');
+    expect($component->get('selectedMatkulIds'))->toBe([]);
+});
+
 it('updates a kurikulum and resyncs its mata kuliah', function () {
     $admin = adminUser();
     $prodi = Prodi::factory()->create();
