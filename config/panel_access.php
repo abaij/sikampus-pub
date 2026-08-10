@@ -72,6 +72,7 @@ return [
         'semester' => 'manage semester',
         'jalur-masuk' => 'manage jalur masuk',
         'jenis-daftar' => 'manage jenis pendaftaran',
+        'jenis-matkul' => 'manage jenis mata kuliah',
         'status-akademik' => 'manage status akademik',
 
         // Pengaturan pengguna — permission-nya hanya dimiliki Superadmin secara default. Modul
@@ -238,7 +239,7 @@ return [
         // Pengaturan akademik — menunya di bawah "Pengaturan" tapi permission-nya tetap milik
         // grup akademik/administrasi (lihat komentar di route_permissions di atas). Aksi Hapus
         // tidak lewat rute sendiri (method Livewire di halaman index), dijaga langsung di
-        // masing-masing App\Livewire\Admin\{Semester,JalurMasuk,JenisDaftar,StatusAkademik}\Index.
+        // masing-masing App\Livewire\Admin\{Semester,JalurMasuk,JenisDaftar,JenisMatkul,StatusAkademik}\Index.
         'semester.index' => 'view semester',
         'semester.create' => 'create semester',
         'semester.edit' => 'update semester',
@@ -250,6 +251,10 @@ return [
         'jenis-daftar.index' => 'view jenis pendaftaran',
         'jenis-daftar.create' => 'create jenis pendaftaran',
         'jenis-daftar.edit' => 'update jenis pendaftaran',
+
+        'jenis-matkul.index' => 'view jenis mata kuliah',
+        'jenis-matkul.create' => 'create jenis mata kuliah',
+        'jenis-matkul.edit' => 'update jenis mata kuliah',
 
         'status-akademik.index' => 'view status akademik',
         'status-akademik.create' => 'create status akademik',

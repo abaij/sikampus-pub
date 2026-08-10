@@ -274,6 +274,13 @@ class PermissionSeeder extends Seeder
             'delete status akademik',
         ];
 
+        $jenisMatkulGranularPermissions = [
+            'view jenis mata kuliah',
+            'create jenis mata kuliah',
+            'update jenis mata kuliah',
+            'delete jenis mata kuliah',
+        ];
+
         // Buat permissions untuk menu administrasi
         $administrasiPermissions = [
             'view administrasi',
@@ -345,6 +352,7 @@ class PermissionSeeder extends Seeder
             $jalurMasukGranularPermissions,
             $jenisDaftarGranularPermissions,
             $statusAkademikGranularPermissions,
+            $jenisMatkulGranularPermissions,
             $administrasiPermissions,
             $laporanPermissions,
             $pengaturanPermissions
@@ -397,6 +405,7 @@ class PermissionSeeder extends Seeder
                 'view jalur masuk',
                 'view jenis pendaftaran',
                 'view status akademik',
+                'view jenis mata kuliah',
             ]
         ));
 

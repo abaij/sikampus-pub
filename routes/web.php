@@ -42,6 +42,8 @@ use App\Livewire\Admin\JenisDaftar\Form as JenisDaftarForm;
 use App\Livewire\Admin\JenisDaftar\Index as JenisDaftarIndex;
 use App\Livewire\Admin\JenisKeringananBiaya\Form as JenisKeringananBiayaForm;
 use App\Livewire\Admin\JenisKeringananBiaya\Index as JenisKeringananBiayaIndex;
+use App\Livewire\Admin\JenisMatkul\Form as JenisMatkulForm;
+use App\Livewire\Admin\JenisMatkul\Index as JenisMatkulIndex;
 use App\Livewire\Admin\JenisPenilaian\Form as JenisPenilaianForm;
 use App\Livewire\Admin\JenisPenilaian\Index as JenisPenilaianIndex;
 use App\Livewire\Admin\Jenjang\Form as JenjangForm;
@@ -574,6 +576,10 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::livewire('jenis-daftar', JenisDaftarIndex::class)->name('jenis-daftar.index');
         Route::livewire('jenis-daftar/create', JenisDaftarForm::class)->name('jenis-daftar.create');
         Route::livewire('jenis-daftar/{id}/edit', JenisDaftarForm::class)->name('jenis-daftar.edit');
+
+        Route::livewire('jenis-matkul', JenisMatkulIndex::class)->name('jenis-matkul.index');
+        Route::livewire('jenis-matkul/create', JenisMatkulForm::class)->name('jenis-matkul.create');
+        Route::livewire('jenis-matkul/{id}/edit', JenisMatkulForm::class)->name('jenis-matkul.edit');
 
         Route::livewire('status-akademik', StatusAkademikIndex::class)->name('status-akademik.index');
         Route::livewire('status-akademik/create', StatusAkademikForm::class)->name('status-akademik.create');

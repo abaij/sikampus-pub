@@ -80,6 +80,7 @@
                     ['route' => 'admin.semester.index', 'label' => 'Semester'],
                     ['route' => 'admin.jalur-masuk.index', 'label' => 'Jalur Masuk'],
                     ['route' => 'admin.jenis-daftar.index', 'label' => 'Jenis Daftar'],
+                    ['route' => 'admin.jenis-matkul.index', 'label' => 'Jenis Mata Kuliah'],
                     ['route' => 'admin.status-akademik.index', 'label' => 'Status Akademik'],
                 ]],
                 ['label' => 'Pengguna', 'children' => [
