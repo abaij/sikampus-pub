@@ -1,6 +1,9 @@
 @php
     $mahasiswa = $this->mahasiswa;
 
+    $initials = collect(explode(' ', trim($mahasiswa->nama)))->filter()->map(fn ($p) => mb_strtoupper(mb_substr($p, 0, 1)))->take(2)->implode('') ?: '?';
+    $avatarUrl = $mahasiswa->foto ? asset('storage/'.ltrim($mahasiswa->foto, '/')) : null;
+
     $statusBadgeClass = function (?string $nama) {
         $nama = mb_strtolower(trim((string) $nama));
         return match (true) {
@@ -76,7 +79,23 @@
     {{-- Tab: Biodata --}}
     @if ($activeTab === 'biodata')
         <div class="rounded-2xl bg-white p-6 shadow-border">
-            <div>
+            <div class="flex flex-col items-center gap-6 border-b border-neutral-200 pb-6 sm:flex-row sm:items-start">
+                @if ($avatarUrl)
+                    <img src="{{ $avatarUrl }}" alt="{{ $mahasiswa->nama }}" class="h-28 w-28 shrink-0 rounded-full object-cover ring-2 ring-neutral-200" />
+                @else
+                    <div class="flex h-28 w-28 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-3xl font-semibold text-neutral-900 ring-2 ring-neutral-200">
+                        {{ $initials }}
+                    </div>
+                @endif
+                <div class="min-w-0 text-center sm:text-left">
+                    <h2 class="text-xl font-semibold tracking-tight text-neutral-900">{{ $mahasiswa->nama }}</h2>
+                    @if ($mahasiswa->nim)
+                        <p class="mt-1 text-sm text-neutral-500">NIM: {{ $mahasiswa->nim }}</p>
+                    @endif
+                </div>
+            </div>
+
+            <div class="mt-6">
                 <h3 class="mb-4 text-sm font-semibold text-neutral-900">Informasi Personal</h3>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div>
