@@ -3,6 +3,7 @@
 use App\Http\Controllers\DosenController;
 use App\Http\Controllers\DosenWaliController;
 use App\Http\Controllers\KelasController;
+use App\Http\Controllers\KelompokKelasController;
 use App\Http\Controllers\KrsController;
 use App\Http\Controllers\MahasiswaController;
 use App\Http\Controllers\MatkulController;
@@ -56,6 +57,7 @@ use App\Livewire\Admin\Kelas\Import as KelasImport;
 use App\Livewire\Admin\Kelas\Index as KelasIndex;
 use App\Livewire\Admin\Kelas\Show as KelasShow;
 use App\Livewire\Admin\KelompokKelas\Form as KelompokKelasForm;
+use App\Livewire\Admin\KelompokKelas\Import as KelompokKelasImport;
 use App\Livewire\Admin\KelompokKelas\Index as KelompokKelasIndex;
 use App\Livewire\Admin\KeringananBiaya\Form as KeringananBiayaForm;
 use App\Livewire\Admin\KeringananBiaya\Index as KeringananBiayaIndex;
@@ -477,8 +479,12 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::livewire('administrasi/mahasiswa/{id}/edit', MahasiswaForm::class)->name('administrasi.mahasiswa.edit');
         Route::livewire('administrasi/mahasiswa/{id}', MahasiswaShow::class)->name('administrasi.mahasiswa.show');
 
+        // Rute literal (create/template/import) harus didaftarkan sebelum 'administrasi/kelas-mahasiswa/{id}'
+        // supaya tidak tertangkap sebagai id (lihat catatan di skill siak-livewire-module).
         Route::livewire('administrasi/kelas-mahasiswa', KelompokKelasIndex::class)->name('administrasi.kelas-mahasiswa');
         Route::livewire('administrasi/kelas-mahasiswa/create', KelompokKelasForm::class)->name('administrasi.kelas-mahasiswa.create');
+        Route::get('administrasi/kelas-mahasiswa/template/download', [KelompokKelasController::class, 'downloadTemplate'])->name('administrasi.kelas-mahasiswa.template');
+        Route::livewire('administrasi/kelas-mahasiswa/import', KelompokKelasImport::class)->name('administrasi.kelas-mahasiswa.import');
         Route::livewire('administrasi/kelas-mahasiswa/{id}/edit', KelompokKelasForm::class)->name('administrasi.kelas-mahasiswa.edit');
 
         // Rute literal ('create') harus di atas rute berparameter ('{id}/edit').

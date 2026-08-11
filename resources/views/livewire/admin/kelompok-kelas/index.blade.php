@@ -18,6 +18,20 @@
 @section('page_actions')
     @if (\App\Support\PanelAccess::can(auth()->user(), 'grup mahasiswa', 'create'))
         <a
+            href="{{ route('admin.administrasi.kelas-mahasiswa.template') }}"
+            class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
+        >
+            <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+            Download Template
+        </a>
+        <a
+            href="{{ route('admin.administrasi.kelas-mahasiswa.import') }}"
+            class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
+        >
+            <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
+            Import Kelas Mahasiswa
+        </a>
+        <a
             href="{{ route('admin.administrasi.kelas-mahasiswa.create') }}"
             class="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
         >
