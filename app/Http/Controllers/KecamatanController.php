@@ -7,8 +7,11 @@ use App\Models\Kota;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -42,6 +45,7 @@ class KecamatanController extends Controller
     public function show(Kecamatan $kecamatan): JsonResponse
     {
         $kecamatan->load('kota.provinsi.negara');
+
         return response()->json($kecamatan);
     }
 
@@ -49,11 +53,12 @@ class KecamatanController extends Controller
     {
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
-            'kode' => ['required', 'string', 'max:50'],
+            'kode' => ['required', 'string', 'max:50', 'unique:kecamatan,kode'],
             'id_kota' => ['nullable', 'exists:kota,id'],
         ]);
 
         $kecamatan = Kecamatan::create($validated);
+
         return response()->json($kecamatan, 201);
     }
 
@@ -61,23 +66,25 @@ class KecamatanController extends Controller
     {
         $validated = $request->validate([
             'nama' => ['required', 'string', 'max:255'],
-            'kode' => ['required', 'string', 'max:50'],
+            'kode' => ['required', 'string', 'max:50', Rule::unique('kecamatan', 'kode')->ignore($kecamatan->id)],
             'id_kota' => ['nullable', 'exists:kota,id'],
         ]);
 
         $kecamatan->update($validated);
+
         return response()->json($kecamatan);
     }
 
     public function destroy(Kecamatan $kecamatan): JsonResponse
     {
         $kecamatan->delete();
+
         return response()->json(['message' => 'Deleted'], 200);
     }
 
     public function downloadTemplate(): StreamedResponse
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Kecamatan');
 
@@ -95,10 +102,10 @@ class KecamatanController extends Controller
         $headerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
-                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['rgb' => '4472C4'],
             ],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ];
         $sheet->getStyle('A1:C1')->applyFromArray($headerStyle);
 
@@ -109,14 +116,14 @@ class KecamatanController extends Controller
         ];
         $sheet->fromArray([$exampleRow], null, 'A2');
 
-        $filename = 'template_import_kecamatan_' . date('YmdHis') . '.xlsx';
+        $filename = 'template_import_kecamatan_'.date('YmdHis').'.xlsx';
 
         return new StreamedResponse(function () use ($spreadsheet) {
             $writer = new Xlsx($spreadsheet);
             $writer->save('php://output');
         }, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment;filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment;filename="'.$filename.'"',
             'Cache-Control' => 'max-age=0',
         ]);
     }
@@ -160,20 +167,24 @@ class KecamatanController extends Controller
 
                 if ($kode === '') {
                     $errors[] = "Baris {$rowNumber}: Kode wajib diisi.";
+
                     continue;
                 }
                 if ($nama === '') {
                     $errors[] = "Baris {$rowNumber}: Nama wajib diisi.";
+
                     continue;
                 }
                 if ($kodeKota === '') {
                     $errors[] = "Baris {$rowNumber}: Kode Kota wajib diisi.";
+
                     continue;
                 }
 
                 $kota = Kota::where('kode', $kodeKota)->first();
-                if (!$kota) {
+                if (! $kota) {
                     $errors[] = "Baris {$rowNumber}: Kota dengan kode '{$kodeKota}' tidak ditemukan.";
+
                     continue;
                 }
 
@@ -181,6 +192,7 @@ class KecamatanController extends Controller
                 if ($exists) {
                     $skipCount++;
                     $errors[] = "Baris {$rowNumber}: Kecamatan dengan kode '{$kode}' sudah ada (diabaikan).";
+
                     continue;
                 }
 
@@ -192,8 +204,9 @@ class KecamatanController extends Controller
                 $successCount++;
             }
 
-            if ($successCount === 0 && !empty($errors)) {
+            if ($successCount === 0 && ! empty($errors)) {
                 DB::rollBack();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Tidak ada data yang berhasil diimport.',
@@ -208,7 +221,7 @@ class KecamatanController extends Controller
                 $message .= ", Diabaikan: {$skipCount}";
             }
             if (count($errors) > 0) {
-                $message .= ". Terdapat " . count($errors) . " error.";
+                $message .= '. Terdapat '.count($errors).' error.';
             }
 
             return response()->json([
@@ -223,9 +236,10 @@ class KecamatanController extends Controller
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan saat mengimport data: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat mengimport data: '.$e->getMessage(),
                 'errors' => $errors,
             ], 500);
         }

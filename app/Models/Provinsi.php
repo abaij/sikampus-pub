@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Provinsi extends Model
@@ -11,10 +11,9 @@ class Provinsi extends Model
     use HasFactory, SoftDeletes;
 
     protected $table = 'provinsi';
-    protected $primaryKey = 'id';
-    public $incrementing = false;
-    protected $keyType = 'string';
+
     protected $fillable = ['nama', 'kode', 'id_negara'];
+
     protected $hidden = ['created_at', 'updated_at', 'deleted_at'];
 
     public function negara()

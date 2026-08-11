@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -23,7 +25,7 @@ class NegaraController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('nama', 'like', "%{$search}%")
-                  ->orWhere('kode', 'like', "%{$search}%");
+                    ->orWhere('kode', 'like', "%{$search}%");
             });
         }
 
@@ -45,6 +47,7 @@ class NegaraController extends Controller
         ]);
 
         $negara = Negara::create($validated);
+
         return response()->json($negara, 201);
     }
 
@@ -56,18 +59,20 @@ class NegaraController extends Controller
         ]);
 
         $negara->update($validated);
+
         return response()->json($negara);
     }
 
     public function destroy(Negara $negara): JsonResponse
     {
         $negara->delete();
+
         return response()->json(['message' => 'Deleted'], 200);
     }
 
     public function downloadTemplate(): StreamedResponse
     {
-        $spreadsheet = new Spreadsheet();
+        $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Negara');
 
@@ -83,10 +88,10 @@ class NegaraController extends Controller
         $headerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
-                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['rgb' => '4472C4'],
             ],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ];
         $sheet->getStyle('A1:B1')->applyFromArray($headerStyle);
 
@@ -96,14 +101,14 @@ class NegaraController extends Controller
         ];
         $sheet->fromArray([$exampleRow], null, 'A2');
 
-        $filename = 'template_import_negara_' . date('YmdHis') . '.xlsx';
+        $filename = 'template_import_negara_'.date('YmdHis').'.xlsx';
 
         return new StreamedResponse(function () use ($spreadsheet) {
             $writer = new Xlsx($spreadsheet);
             $writer->save('php://output');
         }, 200, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment;filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment;filename="'.$filename.'"',
             'Cache-Control' => 'max-age=0',
         ]);
     }
@@ -146,10 +151,12 @@ class NegaraController extends Controller
 
                 if ($kode === '') {
                     $errors[] = "Baris {$rowNumber}: Kode wajib diisi.";
+
                     continue;
                 }
                 if ($nama === '') {
                     $errors[] = "Baris {$rowNumber}: Nama wajib diisi.";
+
                     continue;
                 }
 
@@ -157,6 +164,7 @@ class NegaraController extends Controller
                 if ($exists) {
                     $skipCount++;
                     $errors[] = "Baris {$rowNumber}: Negara dengan kode '{$kode}' sudah ada (diabaikan).";
+
                     continue;
                 }
 
@@ -167,8 +175,9 @@ class NegaraController extends Controller
                 $successCount++;
             }
 
-            if ($successCount === 0 && !empty($errors)) {
+            if ($successCount === 0 && ! empty($errors)) {
                 DB::rollBack();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Tidak ada data yang berhasil diimport.',
@@ -183,7 +192,7 @@ class NegaraController extends Controller
                 $message .= ", Diabaikan: {$skipCount}";
             }
             if (count($errors) > 0) {
-                $message .= ". Terdapat " . count($errors) . " error.";
+                $message .= '. Terdapat '.count($errors).' error.';
             }
 
             return response()->json([
@@ -198,12 +207,12 @@ class NegaraController extends Controller
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan saat mengimport data: ' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat mengimport data: '.$e->getMessage(),
                 'errors' => $errors,
             ], 500);
         }
     }
 }
-

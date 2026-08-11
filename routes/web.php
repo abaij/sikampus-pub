@@ -2,12 +2,16 @@
 
 use App\Http\Controllers\DosenController;
 use App\Http\Controllers\DosenWaliController;
+use App\Http\Controllers\KecamatanController;
 use App\Http\Controllers\KelasController;
 use App\Http\Controllers\KelompokKelasController;
+use App\Http\Controllers\KotaController;
 use App\Http\Controllers\KrsController;
 use App\Http\Controllers\MahasiswaController;
 use App\Http\Controllers\MatkulController;
+use App\Http\Controllers\NegaraController;
 use App\Http\Controllers\NilaiController;
+use App\Http\Controllers\ProvinsiController;
 use App\Http\Controllers\SurveyController;
 use App\Http\Controllers\Web\AdminWebLoginController;
 use App\Http\Controllers\Web\DosenBimbinganExportController;
@@ -113,9 +117,21 @@ use App\Livewire\Admin\Ruangan\Form as RuanganForm;
 use App\Livewire\Admin\Ruangan\Index as RuanganIndex;
 use App\Livewire\Admin\Semester\Form as SemesterForm;
 use App\Livewire\Admin\Semester\Index as SemesterIndex;
+use App\Livewire\Admin\Sistem\Kecamatan\Form as KecamatanForm;
+use App\Livewire\Admin\Sistem\Kecamatan\Import as KecamatanImport;
+use App\Livewire\Admin\Sistem\Kecamatan\Index as KecamatanIndex;
+use App\Livewire\Admin\Sistem\Kota\Form as KotaForm;
+use App\Livewire\Admin\Sistem\Kota\Import as KotaImport;
+use App\Livewire\Admin\Sistem\Kota\Index as KotaIndex;
 use App\Livewire\Admin\Sistem\Lisensi as SistemLisensi;
+use App\Livewire\Admin\Sistem\Negara\Form as NegaraForm;
+use App\Livewire\Admin\Sistem\Negara\Import as NegaraImport;
+use App\Livewire\Admin\Sistem\Negara\Index as NegaraIndex;
 use App\Livewire\Admin\Sistem\Pengaturan as SistemPengaturan;
 use App\Livewire\Admin\Sistem\Plugin as SistemPlugin;
+use App\Livewire\Admin\Sistem\Provinsi\Form as ProvinsiForm;
+use App\Livewire\Admin\Sistem\Provinsi\Import as ProvinsiImport;
+use App\Livewire\Admin\Sistem\Provinsi\Index as ProvinsiIndex;
 use App\Livewire\Admin\StatusAkademik\Form as StatusAkademikForm;
 use App\Livewire\Admin\StatusAkademik\Index as StatusAkademikIndex;
 use App\Livewire\Admin\StrukturBiaya\Form as StrukturBiayaForm;
@@ -614,6 +630,33 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
             Route::livewire('sistem/pengaturan', SistemPengaturan::class)->name('sistem.pengaturan');
             Route::livewire('sistem/lisensi', SistemLisensi::class)->name('sistem.lisensi');
             Route::livewire('sistem/plugin', SistemPlugin::class)->name('sistem.plugin');
+
+            // Data wilayah (Negara/Provinsi/Kota/Kecamatan) — rute literal (create/template/import)
+            // harus didaftarkan sebelum 'sistem/{modul}/{id}' supaya tidak tertangkap sebagai id
+            // (lihat catatan di skill siak-livewire-module).
+            Route::livewire('sistem/negara', NegaraIndex::class)->name('sistem.negara');
+            Route::livewire('sistem/negara/create', NegaraForm::class)->name('sistem.negara.create');
+            Route::get('sistem/negara/template/download', [NegaraController::class, 'downloadTemplate'])->name('sistem.negara.template');
+            Route::livewire('sistem/negara/import', NegaraImport::class)->name('sistem.negara.import');
+            Route::livewire('sistem/negara/{id}/edit', NegaraForm::class)->name('sistem.negara.edit');
+
+            Route::livewire('sistem/provinsi', ProvinsiIndex::class)->name('sistem.provinsi');
+            Route::livewire('sistem/provinsi/create', ProvinsiForm::class)->name('sistem.provinsi.create');
+            Route::get('sistem/provinsi/template/download', [ProvinsiController::class, 'downloadTemplate'])->name('sistem.provinsi.template');
+            Route::livewire('sistem/provinsi/import', ProvinsiImport::class)->name('sistem.provinsi.import');
+            Route::livewire('sistem/provinsi/{id}/edit', ProvinsiForm::class)->name('sistem.provinsi.edit');
+
+            Route::livewire('sistem/kota', KotaIndex::class)->name('sistem.kota');
+            Route::livewire('sistem/kota/create', KotaForm::class)->name('sistem.kota.create');
+            Route::get('sistem/kota/template/download', [KotaController::class, 'downloadTemplate'])->name('sistem.kota.template');
+            Route::livewire('sistem/kota/import', KotaImport::class)->name('sistem.kota.import');
+            Route::livewire('sistem/kota/{id}/edit', KotaForm::class)->name('sistem.kota.edit');
+
+            Route::livewire('sistem/kecamatan', KecamatanIndex::class)->name('sistem.kecamatan');
+            Route::livewire('sistem/kecamatan/create', KecamatanForm::class)->name('sistem.kecamatan.create');
+            Route::get('sistem/kecamatan/template/download', [KecamatanController::class, 'downloadTemplate'])->name('sistem.kecamatan.template');
+            Route::livewire('sistem/kecamatan/import', KecamatanImport::class)->name('sistem.kecamatan.import');
+            Route::livewire('sistem/kecamatan/{id}/edit', KecamatanForm::class)->name('sistem.kecamatan.edit');
         });
 
         Route::livewire('profil', AdminProfil::class)->name('profil');
