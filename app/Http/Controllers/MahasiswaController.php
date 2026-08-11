@@ -651,13 +651,14 @@ class MahasiswaController extends Controller
             'Jumlah Biaya Masuk',
             'Penerima KPS',
             'No. KPS',
+            'Foto (path relatif di storage disk public; file harus sudah diunggah ke server, contoh: mahasiswa/foto/nama_file.jpg)',
         ];
 
         $sheet->fromArray([$headers], null, 'A1');
 
         // Set column widths
-        $columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX', 'AY', 'AZ'];
-        $widths = [25, 15, 25, 15, 15, 20, 20, 20, 20, 20, 30, 10, 10, 15, 20, 12, 20, 20, 20, 20, 15, 20, 25, 25, 25, 20, 12, 25, 15, 15, 20, 20, 20, 15, 20, 15, 20, 20, 20, 15, 20, 15, 20, 20, 20, 15, 20, 15, 15, 15, 20, 20];
+        $columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'AA', 'AB', 'AC', 'AD', 'AE', 'AF', 'AG', 'AH', 'AI', 'AJ', 'AK', 'AL', 'AM', 'AN', 'AO', 'AP', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AV', 'AW', 'AX', 'AY', 'AZ', 'BA'];
+        $widths = [25, 15, 25, 15, 15, 20, 20, 20, 20, 20, 30, 10, 10, 15, 20, 12, 20, 20, 20, 20, 15, 20, 25, 25, 25, 20, 12, 25, 15, 15, 20, 20, 20, 15, 20, 15, 20, 20, 20, 15, 20, 15, 20, 20, 20, 15, 20, 15, 15, 15, 20, 20, 35];
         
         foreach ($columns as $index => $col) {
             if (isset($widths[$index])) {
@@ -732,6 +733,7 @@ class MahasiswaController extends Controller
             '5000000',
             'Ya',
             '1234567890',
+            '', // Foto: opsional, isi hanya jika file sudah diunggah ke storage server
         ];
         $sheet->fromArray([$exampleRow], null, 'A2');
 
@@ -906,6 +908,7 @@ class MahasiswaController extends Controller
                     'jml_biaya_masuk' => $row[49] ?? null,
                     'penerima_kps' => $row[50] ?? null,
                     'no_kps' => $row[51] ?? null,
+                    'foto_path' => $row[52] ?? null,
                 ];
 
                 // Satu-satunya field wajib (NOT NULL): nama. Skip hanya jika nama kosong.
@@ -1178,6 +1181,17 @@ class MahasiswaController extends Controller
                     }
                 }
 
+                // Foto: berupa path relatif yang HARUS sudah ada di storage disk public (bukan upload/URL) — jika tidak ditemukan: null, catat peringatan
+                $fotoPath = null;
+                if (!empty($data['foto_path'])) {
+                    $foto_path_trimmed = ltrim(trim((string) $data['foto_path']), '/');
+                    if (!Storage::disk('public')->exists($foto_path_trimmed)) {
+                        $errors[] = "Baris {$rowNumber}: Foto '{$foto_path_trimmed}' tidak ditemukan di storage, disimpan dengan Foto kosong.";
+                    } else {
+                        $fotoPath = $foto_path_trimmed;
+                    }
+                }
+
                 // Prepare data for insert (nim/email pakai nilai yang mungkin sudah diset null karena duplikat)
                 $mahasiswaData = [
                     'nama' => trim($data['nama']),
@@ -1232,6 +1246,7 @@ class MahasiswaController extends Controller
                     'jml_biaya_masuk' => self::normalizeImportDecimal($data['jml_biaya_masuk'] ?? null),
                     'penerima_kps' => !empty($data['penerima_kps']) ? trim($data['penerima_kps']) : null,
                     'no_kps' => !empty($data['no_kps']) ? trim($data['no_kps']) : null,
+                    'foto' => $fotoPath,
                 ];
 
                 if ($mahasiswaToUpdate !== null) {

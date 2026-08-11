@@ -18,6 +18,7 @@ use App\Models\StatusAkademik;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -131,6 +132,7 @@ class Import extends Component
                     'jml_biaya_masuk' => $row[49] ?? null,
                     'penerima_kps' => $row[50] ?? null,
                     'no_kps' => $row[51] ?? null,
+                    'foto_path' => $row[52] ?? null,
                 ];
 
                 if (empty(trim($data['nama'] ?? ''))) {
@@ -382,6 +384,17 @@ class Import extends Component
                     }
                 }
 
+                // Foto: berupa path relatif yang HARUS sudah ada di storage disk public (bukan upload/URL) — jika tidak ditemukan: null, catat peringatan
+                $fotoPath = null;
+                if (! empty($data['foto_path'])) {
+                    $foto_path_trimmed = ltrim(trim((string) $data['foto_path']), '/');
+                    if (! Storage::disk('public')->exists($foto_path_trimmed)) {
+                        $errors[] = "Baris {$rowNumber}: Foto '{$foto_path_trimmed}' tidak ditemukan di storage, disimpan dengan Foto kosong.";
+                    } else {
+                        $fotoPath = $foto_path_trimmed;
+                    }
+                }
+
                 $mahasiswaData = [
                     'nama' => trim($data['nama']),
                     'nim' => $nimValue,
@@ -438,6 +451,7 @@ class Import extends Component
                     'jml_biaya_masuk' => self::normalizeImportDecimal($data['jml_biaya_masuk'] ?? null),
                     'penerima_kps' => ! empty($data['penerima_kps']) ? trim($data['penerima_kps']) : null,
                     'no_kps' => ! empty($data['no_kps']) ? trim($data['no_kps']) : null,
+                    'foto' => $fotoPath,
                 ];
 
                 if ($mahasiswaToUpdate !== null) {

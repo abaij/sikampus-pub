@@ -5,6 +5,7 @@ use App\Models\Mahasiswa;
 use App\Models\Prodi;
 use App\Models\StatusAkademik;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -138,6 +139,60 @@ it('resolves prodi kode and status akademik nama to their ids', function () {
     $mahasiswa = Mahasiswa::where('nim', '2024111005')->firstOrFail();
     expect($mahasiswa->id_prodi)->toBe($prodi->id);
     expect($mahasiswa->id_status_akademik)->toBe($status->id);
+});
+
+it('links a foto path that already exists on the public disk', function () {
+    Storage::fake('public');
+    Storage::disk('public')->put('mahasiswa/foto/existing.jpg', 'isi-file-dummy');
+
+    $admin = adminUser();
+
+    $spreadsheet = new Spreadsheet;
+    $sheet = $spreadsheet->getActiveSheet();
+    $row = array_fill(0, 53, null);
+    $row[0] = 'Foto Ada';
+    $row[1] = '2024111006';
+    $row[52] = 'mahasiswa/foto/existing.jpg';
+    $sheet->fromArray($row, null, 'A2');
+    $path = tempnam(sys_get_temp_dir(), 'mhs_import_').'.xlsx';
+    (new Xlsx($spreadsheet))->save($path);
+    $file = UploadedFile::fake()->createWithContent('import.xlsx', file_get_contents($path));
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1);
+
+    $mahasiswa = Mahasiswa::where('nim', '2024111006')->firstOrFail();
+    expect($mahasiswa->foto)->toBe('mahasiswa/foto/existing.jpg');
+});
+
+it('saves foto as empty and records a warning when the path does not exist on the public disk', function () {
+    Storage::fake('public');
+
+    $admin = adminUser();
+
+    $spreadsheet = new Spreadsheet;
+    $sheet = $spreadsheet->getActiveSheet();
+    $row = array_fill(0, 53, null);
+    $row[0] = 'Foto Hilang';
+    $row[1] = '2024111007';
+    $row[52] = 'mahasiswa/foto/tidak-ada.jpg';
+    $sheet->fromArray($row, null, 'A2');
+    $path = tempnam(sys_get_temp_dir(), 'mhs_import_').'.xlsx';
+    (new Xlsx($spreadsheet))->save($path);
+    $file = UploadedFile::fake()->createWithContent('import.xlsx', file_get_contents($path));
+
+    $component = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1);
+
+    $mahasiswa = Mahasiswa::where('nim', '2024111007')->firstOrFail();
+    expect($mahasiswa->foto)->toBeNull();
+    expect($component->get('result.errors'))->toContain("Baris 2: Foto 'mahasiswa/foto/tidak-ada.jpg' tidak ditemukan di storage, disimpan dengan Foto kosong.");
 });
 
 it('redirects unauthenticated users to the login page', function () {
