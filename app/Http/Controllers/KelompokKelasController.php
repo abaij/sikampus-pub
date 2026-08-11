@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\KelompokKelas;
+use App\Models\Prodi;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -87,10 +88,11 @@ class KelompokKelasController extends Controller
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
 
-        $headers = ['Nama*'];
+        $headers = ['Nama*', 'Kode Prodi'];
         $sheet->fromArray([$headers], null, 'A1');
 
         $sheet->getColumnDimension('A')->setWidth(40);
+        $sheet->getColumnDimension('B')->setWidth(20);
 
         $headerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
@@ -100,9 +102,9 @@ class KelompokKelasController extends Controller
             ],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ];
-        $sheet->getStyle('A1')->applyFromArray($headerStyle);
+        $sheet->getStyle('A1:B1')->applyFromArray($headerStyle);
 
-        $exampleRow = ['Kelompok A'];
+        $exampleRow = ['Kelompok A', ''];
         $sheet->fromArray([$exampleRow], null, 'A2');
 
         $filename = 'template_import_kelompok_kelas_'.date('YmdHis').'.xlsx';
@@ -152,6 +154,7 @@ class KelompokKelasController extends Controller
                 }
 
                 $nama = trim($row[0] ?? '');
+                $kodeProdi = trim((string) ($row[1] ?? ''));
 
                 if (empty($nama)) {
                     $errors[] = "Baris {$rowNumber}: Nama wajib diisi.";
@@ -172,6 +175,17 @@ class KelompokKelasController extends Controller
                     continue;
                 }
 
+                $idProdi = null;
+                if ($kodeProdi !== '') {
+                    $prodi = Prodi::where('kode', $kodeProdi)->first();
+                    if (! $prodi) {
+                        $errors[] = "Baris {$rowNumber}: Prodi dengan kode '{$kodeProdi}' tidak ditemukan.";
+
+                        continue;
+                    }
+                    $idProdi = $prodi->id;
+                }
+
                 if (KelompokKelas::withTrashed()->where('nama', $nama)->exists()) {
                     $skipCount++;
                     $processedNames[] = $namaLower;
@@ -179,7 +193,7 @@ class KelompokKelasController extends Controller
                     continue;
                 }
 
-                KelompokKelas::create(['nama' => $nama]);
+                KelompokKelas::create(['nama' => $nama, 'id_prodi' => $idProdi]);
                 $successCount++;
                 $processedNames[] = $namaLower;
             }

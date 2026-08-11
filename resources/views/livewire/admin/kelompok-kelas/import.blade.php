@@ -38,6 +38,7 @@
         <ol class="list-inside list-decimal space-y-1 text-sm text-neutral-600">
             <li>Download template Excel lewat tombol "Download Template" di atas.</li>
             <li>Isi data mengikuti kolom pada baris pertama — kolom bertanda <span class="font-semibold">*</span> wajib diisi.</li>
+            <li>Kode Prodi bersifat opsional; jika diisi harus sudah ada di sistem (dicocokkan lewat kode prodi).</li>
             <li>Nama kelas mahasiswa harus unik; baris dengan nama yang sudah ada di sistem akan dilewati (dianggap sudah ada).</li>
             <li>Upload file (.xlsx atau .xls, maks 10MB) lalu klik "Proses Import".</li>
         </ol>
