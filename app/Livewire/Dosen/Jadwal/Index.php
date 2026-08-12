@@ -4,7 +4,9 @@ namespace App\Livewire\Dosen\Jadwal;
 
 use App\Models\Dosen;
 use App\Models\JadwalDosen;
+use App\Models\Kelas;
 use App\Models\Semester;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -77,6 +79,26 @@ class Index extends Component
 
                 return [$hariNum, $jd->jadwal->jam_mulai ?? '00:00:00'];
             })
+            ->values();
+    }
+
+    /**
+     * jadwalRows() dikelompokkan per kelas kuliah untuk tampilan accordion — setiap grup berisi
+     * kelas beserta seluruh slot jadwalnya (masih urut hari lalu jam dari jadwalRows()).
+     * groupBy() mempertahankan urutan kemunculan pertama tiap kelas, jadi kelas dengan slot
+     * paling awal (hari/jam) otomatis muncul lebih dulu.
+     *
+     * @return Collection<int, array{kelas: Kelas, rows: Collection<int, JadwalDosen>}>
+     */
+    #[Computed]
+    public function kelasGroups()
+    {
+        return $this->jadwalRows()
+            ->groupBy(fn (JadwalDosen $jd) => $jd->jadwal->kelas->id)
+            ->map(fn ($rows) => [
+                'kelas' => $rows->first()->jadwal->kelas,
+                'rows' => $rows->values(),
+            ])
             ->values();
     }
 

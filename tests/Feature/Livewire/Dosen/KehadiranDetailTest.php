@@ -45,6 +45,27 @@ it('prefills existing kehadiran and lists only approved krs', function () {
     expect($component->get('form')[$mhsApproved->id]['keterangan'])->toBe('Sakit demam');
 });
 
+it('sorts the mahasiswa list by nim ascending, regardless of krs insertion order', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id]);
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id]);
+    $perkuliahan = Perkuliahan::factory()->create(['id_jadwal' => $jadwal->id]);
+
+    $mhsC = Mahasiswa::factory()->create(['nim' => '2024030']);
+    $mhsA = Mahasiswa::factory()->create(['nim' => '2024010']);
+    $mhsB = Mahasiswa::factory()->create(['nim' => '2024020']);
+    // Sengaja dibuat tidak berurutan supaya urutan insersi KRS tidak kebetulan sama dengan NIM.
+    Krs::factory()->create(['id_mahasiswa' => $mhsC->id, 'id_kelas' => $kelas->id, 'approved_at' => now()]);
+    Krs::factory()->create(['id_mahasiswa' => $mhsA->id, 'id_kelas' => $kelas->id, 'approved_at' => now()]);
+    Krs::factory()->create(['id_mahasiswa' => $mhsB->id, 'id_kelas' => $kelas->id, 'approved_at' => now()]);
+
+    $component = Livewire::actingAs($dosenUser)->test(Detail::class, ['id' => $perkuliahan->id]);
+
+    $nims = collect($component->instance()->mahasiswa())->pluck('mahasiswa.nim')->all();
+    expect($nims)->toBe(['2024010', '2024020', '2024030']);
+});
+
 it('requires a status for every mahasiswa before saving', function () {
     $dosenUser = dosenUser();
     $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();

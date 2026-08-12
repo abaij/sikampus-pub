@@ -78,7 +78,9 @@ class Detail extends Component
     }
 
     /**
-     * Sama persis dengan KehadiranController::getByPerkuliahan.
+     * Sama persis dengan KehadiranController::getByPerkuliahan, kecuali satu hal yang sengaja
+     * berbeda: diurutkan berdasarkan NIM mahasiswa atas permintaan pengguna — API-nya sendiri
+     * tidak mengurutkan sama sekali (urutan insersi KRS apa adanya).
      *
      * @return array<int, array{id_krs: int, mahasiswa: array<string, mixed>, kehadiran: array<string, mixed>|null}>
      */
@@ -90,6 +92,7 @@ class Detail extends Component
             ->whereNotNull('approved_at')
             ->whereNull('deleted_at')
             ->get()
+            ->sortBy(fn (Krs $krs) => $krs->mahasiswa->nim ?? '')
             ->map(function (Krs $krs) {
                 $kehadiran = Kehadiran::where('id_perkuliahan', $this->perkuliahanId)
                     ->where('id_mhs', $krs->id_mahasiswa)

@@ -108,3 +108,46 @@ it('links each row to the jadwal detail page', function () {
         ->assertOk()
         ->assertSee(route('dosen.jadwal.detail', ['kelasId' => $kelas->id, 'jadwalId' => $jadwal->id, 'id_semester' => $semesterAktif->id]), false);
 });
+
+it('groups jadwal rows by kelas for the accordion, ordered by each kelas earliest slot', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelasSelasa = Kelas::factory()->create(['id_semester' => $semesterAktif->id]);
+    $kelasSenin = Kelas::factory()->create(['id_semester' => $semesterAktif->id]);
+
+    // kelasSelasa dibuat lebih dulu, tapi slotnya (Selasa) lebih lambat dari kelasSenin (Senin) —
+    // urutan grup harus ikut urutan hari/jam slot, bukan urutan pembuatan Kelas.
+    $jadwalSelasa = Jadwal::factory()->create(['id_kelas' => $kelasSelasa->id, 'hari' => 'selasa', 'jam_mulai' => '08:00', 'is_active' => true]);
+    $jadwalSeninPagi = Jadwal::factory()->create(['id_kelas' => $kelasSenin->id, 'hari' => 'senin', 'jam_mulai' => '08:00', 'is_active' => true]);
+    $jadwalSeninSore = Jadwal::factory()->create(['id_kelas' => $kelasSenin->id, 'hari' => 'senin', 'jam_mulai' => '15:00', 'is_active' => true]);
+
+    JadwalDosen::create(['id_jadwal' => $jadwalSelasa->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
+    JadwalDosen::create(['id_jadwal' => $jadwalSeninPagi->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
+    JadwalDosen::create(['id_jadwal' => $jadwalSeninSore->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
+
+    $groups = Livewire::actingAs($dosenUser)->test(Index::class)->instance()->kelasGroups();
+
+    expect($groups)->toHaveCount(2);
+    expect($groups->first()['kelas']->id)->toBe($kelasSenin->id);
+    expect($groups->first()['rows'])->toHaveCount(2);
+    expect($groups->last()['kelas']->id)->toBe($kelasSelasa->id);
+    expect($groups->last()['rows'])->toHaveCount(1);
+});
+
+it('renders the jadwal mengajar page as a collapsible accordion per kelas', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_semester' => $semesterAktif->id, 'kode' => 'KLS-ACC01']);
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'hari' => 'senin', 'is_active' => true]);
+    JadwalDosen::create(['id_jadwal' => $jadwal->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
+
+    $html = $this->actingAs($dosenUser)->get(route('dosen.jadwal'))->getContent();
+
+    expect($html)->toContain('<details')
+        ->toContain('<summary')
+        ->toContain('KLS-ACC01');
+});

@@ -312,3 +312,26 @@ it('lists approved krs mahasiswa with their kehadiran status on the kehadiran ta
         ->assertDontSee('Mahasiswa Belum Disetujui')
         ->assertSee(route('dosen.kehadiran.detail', $perkuliahan->id), false);
 });
+
+it('sorts the kehadiran tab mahasiswa list by nim ascending', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+    $kelas = Kelas::factory()->create();
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+    Perkuliahan::factory()->create(['id_jadwal' => $jadwal->id, 'waktu_mulai' => now(), 'waktu_selesai' => null]);
+
+    $mhsC = Mahasiswa::factory()->create(['nim' => '2024030']);
+    $mhsA = Mahasiswa::factory()->create(['nim' => '2024010']);
+    $mhsB = Mahasiswa::factory()->create(['nim' => '2024020']);
+    Krs::factory()->create(['id_mahasiswa' => $mhsC->id, 'id_kelas' => $kelas->id, 'approved_at' => now()]);
+    Krs::factory()->create(['id_mahasiswa' => $mhsA->id, 'id_kelas' => $kelas->id, 'approved_at' => now()]);
+    Krs::factory()->create(['id_mahasiswa' => $mhsB->id, 'id_kelas' => $kelas->id, 'approved_at' => now()]);
+
+    $component = Livewire::actingAs($dosenUser)
+        ->test(Detail::class, ['kelasId' => $kelas->id, 'jadwalId' => $jadwal->id])
+        ->call('setTab', 'kehadiran');
+
+    $nims = collect($component->instance()->kehadiranMahasiswa())->pluck('mahasiswa.nim')->all();
+    expect($nims)->toBe(['2024010', '2024020', '2024030']);
+});

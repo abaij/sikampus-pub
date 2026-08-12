@@ -413,7 +413,9 @@ class Detail extends Component
      * App\Livewire\Dosen\Kehadiran\Detail::mahasiswa, sumber aslinya), tapi id perkuliahannya
      * diambil dari perkuliahanUntukKehadiran() di atas, bukan dari parameter route — tab ini tidak
      * ganti URL, cukup menunjukkan status kehadiran mahasiswa untuk sesi yang relevan pada slot
-     * jadwal yang sedang dibuka.
+     * jadwal yang sedang dibuka. Diurutkan berdasarkan NIM (sama seperti
+     * Kehadiran\Detail::mahasiswa) supaya kedua tempat yang menampilkan daftar mahasiswa
+     * kehadiran yang sama ini konsisten — bukan cuma di form pengisiannya.
      *
      * @return array<int, array{id_krs: int, mahasiswa: array<string, mixed>, kehadiran: array<string, mixed>|null}>
      */
@@ -430,6 +432,7 @@ class Detail extends Component
             ->whereNotNull('approved_at')
             ->whereNull('deleted_at')
             ->get()
+            ->sortBy(fn (Krs $krs) => $krs->mahasiswa->nim ?? '')
             ->map(function (Krs $krs) use ($perkuliahan) {
                 $kehadiran = Kehadiran::where('id_perkuliahan', $perkuliahan->id)
                     ->where('id_mhs', $krs->id_mahasiswa)
