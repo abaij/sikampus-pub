@@ -5,10 +5,13 @@ use App\Models\Dosen;
 use App\Models\Jadwal;
 use App\Models\JadwalDosen;
 use App\Models\JenisKuliah;
+use App\Models\Kehadiran;
 use App\Models\Kelas;
 use App\Models\KelasDosen;
+use App\Models\Krs;
 use App\Models\Mahasiswa;
 use App\Models\MateriPerkuliahan;
+use App\Models\Perkuliahan;
 use App\Models\Ruangan;
 use App\Models\Tugas;
 use App\Models\TugasMahasiswa;
@@ -241,4 +244,71 @@ it('marks a submission as accepted only when it belongs to this jadwal', functio
 
     $component->call('terimaPengumpulan', $submisiJadwalLain->id)->assertStatus(403);
     expect($submisiJadwalLain->fresh()->status)->toBe('submitted');
+});
+
+it('shows no active perkuliahan for the kehadiran tab when none exists for this jadwal', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+    $kelas = Kelas::factory()->create();
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+
+    $component = Livewire::actingAs($dosenUser)
+        ->test(Detail::class, ['kelasId' => $kelas->id, 'jadwalId' => $jadwal->id])
+        ->call('setTab', 'kehadiran');
+
+    expect($component->instance()->perkuliahanUntukKehadiran())->toBeNull();
+    expect($component->instance()->kehadiranMahasiswa())->toBe([]);
+    $component->assertSee('Belum ada rekaman perkuliahan');
+});
+
+it('prefers the ongoing perkuliahan over a finished one for the kehadiran tab', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+    $kelas = Kelas::factory()->create();
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+
+    $selesai = Perkuliahan::factory()->create([
+        'id_jadwal' => $jadwal->id,
+        'waktu_mulai' => now()->subDay(),
+        'waktu_selesai' => now()->subDay()->addHours(2),
+    ]);
+    $berlangsung = Perkuliahan::factory()->create([
+        'id_jadwal' => $jadwal->id,
+        'waktu_mulai' => now()->subMinutes(10),
+        'waktu_selesai' => null,
+    ]);
+
+    $component = Livewire::actingAs($dosenUser)
+        ->test(Detail::class, ['kelasId' => $kelas->id, 'jadwalId' => $jadwal->id]);
+
+    expect($component->instance()->perkuliahanUntukKehadiran()->id)->toBe($berlangsung->id)
+        ->not->toBe($selesai->id);
+});
+
+it('lists approved krs mahasiswa with their kehadiran status on the kehadiran tab and links to the marking page', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+    $kelas = Kelas::factory()->create();
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+    $perkuliahan = Perkuliahan::factory()->create(['id_jadwal' => $jadwal->id, 'waktu_mulai' => now(), 'waktu_selesai' => null]);
+
+    $mhsHadir = Mahasiswa::factory()->create(['nama' => 'Mahasiswa Hadir']);
+    Krs::factory()->create(['id_mahasiswa' => $mhsHadir->id, 'id_kelas' => $kelas->id, 'approved_at' => now()]);
+    Kehadiran::create(['id_perkuliahan' => $perkuliahan->id, 'id_mhs' => $mhsHadir->id, 'status' => 'hadir']);
+
+    $mhsBelumDisetujui = Mahasiswa::factory()->create(['nama' => 'Mahasiswa Belum Disetujui']);
+    Krs::factory()->create(['id_mahasiswa' => $mhsBelumDisetujui->id, 'id_kelas' => $kelas->id, 'approved_at' => null]);
+
+    $component = Livewire::actingAs($dosenUser)
+        ->test(Detail::class, ['kelasId' => $kelas->id, 'jadwalId' => $jadwal->id])
+        ->call('setTab', 'kehadiran');
+
+    expect($component->instance()->kehadiranMahasiswa())->toHaveCount(1);
+
+    $component->assertSee('Mahasiswa Hadir')
+        ->assertDontSee('Mahasiswa Belum Disetujui')
+        ->assertSee(route('dosen.kehadiran.detail', $perkuliahan->id), false);
 });

@@ -64,6 +64,22 @@ it('marks a jadwal slot as sedang berlangsung when a perkuliahan session has sta
     expect($rows[0]['sesi_status'])->toBe('sedang_berlangsung');
 });
 
+it('shows the Status sesi column with the sesi badge in the slot jadwal pertemuan table', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $kelas = Kelas::factory()->create();
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => false]);
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'is_active' => true]);
+    Perkuliahan::factory()->create(['id_jadwal' => $jadwal->id, 'waktu_mulai' => now(), 'waktu_selesai' => null]);
+
+    $this->actingAs($dosenUser)
+        ->get(route('dosen.jadwal.show', ['kelasId' => $kelas->id]))
+        ->assertOk()
+        ->assertSee('Status sesi')
+        ->assertSee('Sedang berlangsung');
+});
+
 it('rejects a mismatched id_semester query with a 422', function () {
     $dosenUser = dosenUser();
     $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();

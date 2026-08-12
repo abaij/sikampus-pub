@@ -1,6 +1,16 @@
 @section('title', 'Jadwal per Kelas — ' . config('app.name'))
 @section('header_title', 'Jadwal per Kelas')
 
+@section('page_actions')
+    <a
+        href="{{ route('dosen.jadwal.jurnal-perkuliahan', ['kelasId' => $kelasId, 'id_semester' => $idSemester !== '' ? $idSemester : null]) }}"
+        class="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
+    >
+        <i data-lucide="printer" class="h-4 w-4" aria-hidden="true"></i>
+        Cetak Jurnal Perkuliahan
+    </a>
+@endsection
+
 @section('breadcrumb')
     <div class="flex flex-wrap items-center gap-3 text-sm">
         <a href="{{ route('dosen.kelas') }}" class="inline-flex items-center gap-2 font-medium text-sky-600 hover:text-sky-700">

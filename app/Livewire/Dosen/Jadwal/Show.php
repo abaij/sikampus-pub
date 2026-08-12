@@ -84,6 +84,11 @@ class Show extends Component
      * Sama persis dengan formatJadwalSlotsWithSesi — tiap slot ditandai status sesi perkuliahan
      * (belum_mulai/sedang_berlangsung/selesai) berdasarkan baris `perkuliahan` terkait.
      *
+     * sesi_status/sesi_status_label ditampilkan sebagai kolom "Status sesi" di tabel Slot Jadwal
+     * Pertemuan (show.blade.php). Sempat dihapus lalu dikembalikan lagi atas permintaan pengguna —
+     * kolom STATUS pada PDF Jurnal Perkuliahan (JurnalPerkuliahanCetakController) sengaja tetap
+     * tidak ada, jadi jangan disamakan kembali.
+     *
      * @return array<int, array{jadwal: Jadwal, sesi_status: string, sesi_status_label: string}>
      */
     #[Computed]

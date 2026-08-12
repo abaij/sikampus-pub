@@ -14,7 +14,13 @@
 @endphp
 
 @section('breadcrumb')
-    <a href="{{ route('dosen.kehadiran') }}" class="inline-flex items-center gap-2 text-sm font-medium text-sky-600 hover:text-sky-700">
+    {{-- Kembali ke tab Kehadiran pada slot jadwal terkait — itulah pintu masuk utama ke halaman
+         ini sekarang (lihat tab 'kehadiran' di App\Livewire\Dosen\Jadwal\Detail), bukan ke
+         App\Livewire\Dosen\Kehadiran\Index yang sudah tidak ada di menu. --}}
+    <a
+        href="{{ route('dosen.jadwal.detail', ['kelasId' => $p->jadwal->id_kelas, 'jadwalId' => $p->id_jadwal]) }}"
+        class="inline-flex items-center gap-2 text-sm font-medium text-sky-600 hover:text-sky-700"
+    >
         <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
         Kembali
     </a>

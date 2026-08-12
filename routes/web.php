@@ -17,6 +17,7 @@ use App\Http\Controllers\Web\AdminWebLoginController;
 use App\Http\Controllers\Web\DosenBimbinganExportController;
 use App\Http\Controllers\Web\DosenExportController;
 use App\Http\Controllers\Web\ImpersonateController;
+use App\Http\Controllers\Web\JurnalPerkuliahanCetakController;
 use App\Http\Controllers\Web\KrsCetakController;
 use App\Http\Controllers\Web\LoginController;
 use App\Http\Controllers\Web\MahasiswaExportController;
@@ -266,9 +267,12 @@ Route::middleware(['auth', 'role.dosen.web'])->group(function (): void {
 
     Route::livewire('/dosen/kelas', DosenKelasIndex::class)->name('dosen.kelas');
 
-    // Rute literal ('/dosen/jadwal') harus di atas rute berparameter ('{kelasId}', '{kelasId}/{jadwalId}').
+    // Rute literal ('/dosen/jadwal', '{kelasId}/jurnal-perkuliahan-pdf') harus di atas rute
+    // berparameter ('{kelasId}', '{kelasId}/{jadwalId}') — kalau tidak, 'jurnal-perkuliahan-pdf'
+    // akan tertangkap sebagai nilai {jadwalId}.
     Route::livewire('/dosen/jadwal', DosenJadwalIndex::class)->name('dosen.jadwal');
     Route::livewire('/dosen/jadwal/{kelasId}', DosenJadwalShow::class)->name('dosen.jadwal.show');
+    Route::get('/dosen/jadwal/{kelasId}/jurnal-perkuliahan-pdf', [JurnalPerkuliahanCetakController::class, 'show'])->name('dosen.jadwal.jurnal-perkuliahan');
     Route::livewire('/dosen/jadwal/{kelasId}/{jadwalId}', DosenJadwalDetail::class)->name('dosen.jadwal.detail');
 
     // Rute literal ('/dosen/nilai') harus di atas rute berparameter ('{kelasId}', '{kelasId}/rekap').

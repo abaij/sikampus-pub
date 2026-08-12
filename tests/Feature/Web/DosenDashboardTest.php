@@ -22,3 +22,11 @@ it('forbids a non-dosen user', function () {
         ->get(route('dosen.dashboard'))
         ->assertForbidden();
 });
+
+it('does not show a standalone Kehadiran sidebar item — it lives under the Jadwal Mengajar detail tab instead', function () {
+    $dosen = dosenUser();
+
+    $html = $this->actingAs($dosen)->get(route('dosen.dashboard'))->getContent();
+
+    expect($html)->not->toContain(route('dosen.kehadiran'));
+});

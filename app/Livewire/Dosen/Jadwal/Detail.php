@@ -6,12 +6,17 @@ use App\Models\Dosen;
 use App\Models\Jadwal;
 use App\Models\JadwalDosen;
 use App\Models\JenisKuliah;
+use App\Models\Kehadiran;
 use App\Models\KelasDosen;
+use App\Models\Krs;
 use App\Models\MateriPerkuliahan;
+use App\Models\Perkuliahan;
 use App\Models\Ruangan;
 use App\Models\Tugas;
 use App\Models\TugasMahasiswa;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
@@ -68,6 +73,18 @@ class Detail extends Component
 
     /** @var TemporaryUploadedFile|null */
     public $tugasFile = null;
+
+    // 'none' | 'konfirmasi_mulai_materi' | 'luar_jadwal' — sama dengan MulaiDialog di
+    // dosen/jadwal/[kelasId]/[jadwalId]/page.tsx (siak-frontend).
+    public string $mulaiDialog = 'none';
+
+    public string $modalMateriSesi = '';
+
+    public bool $selesaiDialogOpen = false;
+
+    public string $formRealisasiMateriSelesai = '';
+
+    public string $submitError = '';
 
     public function mount(int $kelasId, int $jadwalId): void
     {
@@ -129,6 +146,310 @@ class Detail extends Component
         ])->findOrFail($this->jadwalId);
     }
 
+    /**
+     * Semua baris perkuliahan untuk slot jadwal ini — dasar bagi sesiAktif/perkuliahanTerakhirSlot/
+     * perkuliahanUntukKehadiran di bawah, supaya tidak query berkali-kali.
+     */
+    #[Computed]
+    public function perkuliahanCandidates()
+    {
+        return Perkuliahan::where('id_jadwal', $this->jadwalId)->whereNull('deleted_at')->get();
+    }
+
+    /**
+     * Sesi yang sedang berlangsung (sudah mulai, belum selesai) untuk slot jadwal ini. Sama persis
+     * dengan `sesiAktif` di dosen/jadwal/[kelasId]/[jadwalId]/page.tsx (siak-frontend).
+     */
+    #[Computed]
+    public function sesiAktif(): ?Perkuliahan
+    {
+        return $this->perkuliahanCandidates
+            ->filter(fn (Perkuliahan $p) => $p->waktu_mulai && ! $p->waktu_selesai)
+            ->sortByDesc(fn (Perkuliahan $p) => $p->waktu_mulai?->getTimestamp() ?? 0)
+            ->first();
+    }
+
+    /**
+     * Baris perkuliahan terbaru untuk slot ini (berlangsung atau sudah selesai) — dipakai untuk
+     * menandai bahwa sesi terakhir slot ini sudah pernah diakhiri. Sama persis dengan
+     * `perkuliahanTerakhir` di FE (tie-break waktu_mulai lalu id, sama-sama descending).
+     */
+    #[Computed]
+    public function perkuliahanTerakhirSlot(): ?Perkuliahan
+    {
+        return $this->perkuliahanCandidates
+            ->sortByDesc(fn (Perkuliahan $p) => [$p->waktu_mulai?->getTimestamp() ?? 0, $p->id])
+            ->first();
+    }
+
+    /**
+     * Sesi yang dipakai untuk tab Kehadiran — sesi yang sedang berlangsung, atau sesi terakhir
+     * kalau tidak ada yang berlangsung. Sama persis dengan `perkuliahanUntukKehadiran` di FE.
+     */
+    #[Computed]
+    public function perkuliahanUntukKehadiran(): ?Perkuliahan
+    {
+        return $this->sesiAktif ?? $this->perkuliahanTerakhirSlot;
+    }
+
+    /**
+     * Sama persis dengan `sesiTerakhirSudahSelesai` di FE — dipakai bisaTampilMulaiSesi() di bawah.
+     */
+    #[Computed]
+    public function sesiTerakhirSudahSelesai(): bool
+    {
+        $p = $this->perkuliahanTerakhirSlot;
+
+        return $p !== null && $p->waktu_mulai !== null && $p->waktu_selesai !== null;
+    }
+
+    /**
+     * Tombol "Mulai sesi" hanya tampil kalau tidak ada sesi berlangsung DAN sesi terakhir untuk
+     * slot ini belum pernah diakhiri — pembatasan ini FE-only, bukan aturan dari
+     * PerkuliahanController::store (API sendiri sebenarnya tetap mengizinkan mulai sesi baru walau
+     * sesi sebelumnya di slot yang sama sudah selesai). Sama persis dengan `bisaTampilMulaiSesi`.
+     */
+    #[Computed]
+    public function bisaTampilMulaiSesi(): bool
+    {
+        return $this->sesiAktif === null && ! $this->sesiTerakhirSudahSelesai;
+    }
+
+    public function klikMulaiSesi(): void
+    {
+        $this->submitError = '';
+        $this->modalMateriSesi = $this->bahasan !== '' ? $this->bahasan : '';
+        $this->mulaiDialog = 'konfirmasi_mulai_materi';
+    }
+
+    public function cancelMulaiDialog(): void
+    {
+        if ($this->mulaiDialog !== 'none') {
+            $this->mulaiDialog = 'none';
+        }
+    }
+
+    /**
+     * Sama persis dengan onKonfirmasiMulaiDariModal di FE — cek jendela jadwal dulu sebelum
+     * benar-benar submit; kalau di luar jendela, tampilkan modal peringatan 'luar_jadwal'.
+     */
+    public function konfirmasiMulaiDariModal(): void
+    {
+        if ($this->waktuCocokDenganJadwal($this->jadwal)) {
+            $this->submitMulaiSesi();
+        } else {
+            $this->mulaiDialog = 'luar_jadwal';
+        }
+    }
+
+    public function konfirmasiMulaiLuarJadwal(): void
+    {
+        $this->mulaiDialog = 'none';
+        $this->submitMulaiSesi();
+    }
+
+    /**
+     * Sama persis dengan waktuCocokDenganJadwal di FE — jendela mulai paling cepat 30 menit
+     * sebelum jam_mulai, sampai jam_selesai, berdasarkan tanggal eksplisit jadwal kalau ada,
+     * kalau tidak hari ini.
+     */
+    private function waktuCocokDenganJadwal(Jadwal $jadwal): bool
+    {
+        $tanggal = $jadwal->tanggal ? $jadwal->tanggal->format('Y-m-d') : now()->format('Y-m-d');
+        $mulai = Carbon::parse($tanggal.' '.($jadwal->jam_mulai ?? '00:00:00'));
+        $selesai = Carbon::parse($tanggal.' '.($jadwal->jam_selesai ?? '00:00:00'));
+        $now = now();
+
+        return $now->gte($mulai->copy()->subMinutes(30)) && $now->lte($selesai);
+    }
+
+    /**
+     * Sama persis dengan PerkuliahanController::store, disederhanakan karena kelasId/jadwalId/
+     * dosenId sudah divalidasi sekali di mount() (bukan divalidasi ulang per-request seperti API).
+     */
+    private function submitMulaiSesi(): void
+    {
+        $ongoing = Perkuliahan::where('id_jadwal', $this->jadwalId)
+            ->whereNotNull('waktu_mulai')
+            ->whereNull('waktu_selesai')
+            ->whereNull('deleted_at')
+            ->exists();
+
+        if ($ongoing) {
+            $this->submitError = 'Masih ada sesi yang berlangsung untuk slot jadwal ini. Akhiri sesi terlebih dahulu.';
+
+            return;
+        }
+
+        $materi = trim($this->modalMateriSesi) !== '' ? trim($this->modalMateriSesi) : null;
+
+        DB::transaction(function () use ($materi): void {
+            $this->ensureJadwalDosenAktif();
+
+            Perkuliahan::create([
+                'id_jadwal' => $this->jadwalId,
+                'tanggal' => now()->toDateString(),
+                'waktu_mulai' => now(),
+                'waktu_selesai' => null,
+                'materi' => $materi,
+                'created_by' => $this->namaLengkapDosen(),
+            ]);
+        });
+
+        $this->mulaiDialog = 'none';
+        $this->modalMateriSesi = '';
+        $this->submitError = '';
+        unset(
+            $this->perkuliahanCandidates,
+            $this->sesiAktif,
+            $this->perkuliahanTerakhirSlot,
+            $this->perkuliahanUntukKehadiran,
+            $this->sesiTerakhirSudahSelesai,
+            $this->bisaTampilMulaiSesi,
+            $this->kehadiranMahasiswa,
+        );
+        session()->flash('status_sesi', 'Sesi perkuliahan dimulai.');
+    }
+
+    public function klikSelesaikanSesi(): void
+    {
+        $sesi = $this->sesiAktif;
+        if ($sesi === null) {
+            return;
+        }
+
+        $this->submitError = '';
+        $this->formRealisasiMateriSelesai = $sesi->materi !== null && trim((string) $sesi->materi) !== '' ? $sesi->materi : '';
+        $this->selesaiDialogOpen = true;
+    }
+
+    public function cancelSelesaiDialog(): void
+    {
+        $this->selesaiDialogOpen = false;
+    }
+
+    /**
+     * Sama persis dengan PerkuliahanController::selesaiSesi.
+     */
+    public function submitSelesaiSesi(): void
+    {
+        $sesi = $this->sesiAktif;
+        abort_if($sesi === null, 404, 'Sesi tidak ditemukan.');
+        abort_if($sesi->waktu_mulai === null, 422, 'Perkuliahan belum dimulai.');
+        abort_if($sesi->waktu_selesai !== null, 422, 'Sesi sudah diakhiri.');
+
+        $realisasi = trim($this->formRealisasiMateriSelesai) !== '' ? trim($this->formRealisasiMateriSelesai) : null;
+        $sesi->waktu_selesai = now();
+        $sesi->realisasi_materi = $realisasi;
+        $sesi->save();
+
+        $this->selesaiDialogOpen = false;
+        unset(
+            $this->perkuliahanCandidates,
+            $this->sesiAktif,
+            $this->perkuliahanTerakhirSlot,
+            $this->perkuliahanUntukKehadiran,
+            $this->sesiTerakhirSudahSelesai,
+            $this->bisaTampilMulaiSesi,
+            $this->kehadiranMahasiswa,
+        );
+        session()->flash('status_sesi', 'Sesi perkuliahan diakhiri.');
+    }
+
+    /**
+     * Sama persis dengan PerkuliahanController::ensureJadwalDosenAktif.
+     */
+    private function ensureJadwalDosenAktif(): void
+    {
+        $existing = JadwalDosen::withTrashed()
+            ->where('id_jadwal', $this->jadwalId)
+            ->where('id_dosen', $this->dosenId)
+            ->first();
+
+        if ($existing) {
+            if ($existing->trashed()) {
+                $existing->restore();
+            }
+            if ($existing->status !== 'active') {
+                $existing->update(['status' => 'active']);
+            }
+
+            return;
+        }
+
+        JadwalDosen::create([
+            'id_jadwal' => $this->jadwalId,
+            'id_dosen' => $this->dosenId,
+            'status' => 'active',
+        ]);
+    }
+
+    /**
+     * Sama persis dengan PerkuliahanController::namaLengkapDosen.
+     */
+    private function namaLengkapDosen(): string
+    {
+        $dosen = Dosen::find($this->dosenId);
+        $nama = trim(
+            ($dosen?->gelar_depan ? $dosen->gelar_depan.' ' : '').
+            (string) ($dosen?->nama ?? '').
+            ($dosen?->gelar_belakang ? ', '.$dosen->gelar_belakang : '')
+        );
+
+        if ($nama !== '') {
+            return $nama;
+        }
+
+        $userName = Auth::user()?->name;
+        if ($userName && trim((string) $userName) !== '') {
+            return trim((string) $userName);
+        }
+
+        return (string) (Auth::id() ?? $this->dosenId);
+    }
+
+    /**
+     * Sama persis dengan KehadiranController::getByPerkuliahan (lihat juga
+     * App\Livewire\Dosen\Kehadiran\Detail::mahasiswa, sumber aslinya), tapi id perkuliahannya
+     * diambil dari perkuliahanUntukKehadiran() di atas, bukan dari parameter route — tab ini tidak
+     * ganti URL, cukup menunjukkan status kehadiran mahasiswa untuk sesi yang relevan pada slot
+     * jadwal yang sedang dibuka.
+     *
+     * @return array<int, array{id_krs: int, mahasiswa: array<string, mixed>, kehadiran: array<string, mixed>|null}>
+     */
+    #[Computed]
+    public function kehadiranMahasiswa(): array
+    {
+        $perkuliahan = $this->perkuliahanUntukKehadiran;
+        if ($perkuliahan === null) {
+            return [];
+        }
+
+        return Krs::with(['mahasiswa:id,nim,nama', 'mahasiswa.prodi:id,nama'])
+            ->where('id_kelas', $this->kelasId)
+            ->whereNotNull('approved_at')
+            ->whereNull('deleted_at')
+            ->get()
+            ->map(function (Krs $krs) use ($perkuliahan) {
+                $kehadiran = Kehadiran::where('id_perkuliahan', $perkuliahan->id)
+                    ->where('id_mhs', $krs->id_mahasiswa)
+                    ->first();
+
+                return [
+                    'id_krs' => $krs->id,
+                    'mahasiswa' => [
+                        'id' => $krs->mahasiswa->id,
+                        'nim' => $krs->mahasiswa->nim,
+                        'nama' => $krs->mahasiswa->nama,
+                        'prodi' => $krs->mahasiswa->prodi ? ['id' => $krs->mahasiswa->prodi->id, 'nama' => $krs->mahasiswa->prodi->nama] : null,
+                    ],
+                    'kehadiran' => $kehadiran ? ['id' => $kehadiran->id, 'status' => $kehadiran->status, 'keterangan' => $kehadiran->keterangan] : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
     #[Computed]
     public function ruanganOptions()
     {
@@ -143,7 +464,7 @@ class Detail extends Component
 
     public function setTab(string $tab): void
     {
-        $this->tab = in_array($tab, ['informasi', 'materi', 'tugas'], true) ? $tab : 'informasi';
+        $this->tab = in_array($tab, ['informasi', 'kehadiran', 'materi', 'tugas'], true) ? $tab : 'informasi';
     }
 
     /**

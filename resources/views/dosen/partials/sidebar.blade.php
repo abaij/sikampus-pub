@@ -7,10 +7,12 @@
         ['label' => 'Perkuliahan', 'icon' => 'calendar', 'children' => [
             ['route' => 'dosen.kelas', 'label' => 'Kelas'],
             ['route' => 'dosen.jadwal', 'label' => 'Jadwal Mengajar'],
-            // Frontend tidak menaruh Kehadiran di sidebar (hanya diakses lewat tombol "Isi
-            // kehadiran" di halaman detail Jadwal Mengajar) — versi Jadwal Detail di panel ini
-            // belum punya tombol itu, jadi ditambahkan di sini supaya modulnya tetap terjangkau.
-            ['route' => 'dosen.kehadiran', 'label' => 'Kehadiran'],
+            // Kehadiran sengaja tidak ada di sini, sama seperti FE (DosenSidebar.tsx) — diakses
+            // lewat tab "Kehadiran" di halaman detail Jadwal Mengajar (App\Livewire\Dosen\Jadwal\
+            // Detail), bukan menu tersendiri. Rute dosen.kehadiran (App\Livewire\Dosen\Kehadiran\
+            // Index, daftar per kelas + rekap) tetap ada dan tetap bisa dibuka langsung lewat URL —
+            // sama seperti app/dosen/kehadiran/page.tsx di FE yang juga tidak ditaut dari sidebar
+            // mana pun tapi rute-nya tetap hidup.
             ['route' => 'dosen.nilai', 'label' => 'Nilai'],
             ['route' => 'dosen.rps', 'label' => 'RPS'],
         ]],

@@ -37,17 +37,51 @@
             <span>{{ session('status_bahasan') }}</span>
         </div>
     @endif
+    @if (session('status_sesi'))
+        <div class="flex gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <i data-lucide="check-circle" class="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true"></i>
+            <span>{{ session('status_sesi') }}</span>
+        </div>
+    @endif
 
     <div class="overflow-hidden rounded-2xl bg-white shadow-border">
         <div class="border-b border-neutral-100 bg-neutral-50 px-5 py-4">
-            <span class="rounded bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">{{ $km?->kodeMatkulLabel() ?? '—' }}</span>
-            <h2 class="mt-2 text-lg font-semibold text-neutral-900">{{ $km?->namaMatkulLabel() ?? '—' }}</h2>
-            <p class="mt-1 text-sm text-neutral-500">
-                Kelas {{ $kelas?->kode ?? '-' }}
-                @if ($kelas?->semester)
-                    · {{ $kelas->semester->nama }} ({{ $kelas->semester->kode }})
-                @endif
-            </p>
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <span class="rounded bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">{{ $km?->kodeMatkulLabel() ?? '—' }}</span>
+                    <h2 class="mt-2 text-lg font-semibold text-neutral-900">{{ $km?->namaMatkulLabel() ?? '—' }}</h2>
+                    <p class="mt-1 text-sm text-neutral-500">
+                        Kelas {{ $kelas?->kode ?? '-' }}
+                        @if ($kelas?->semester)
+                            · {{ $kelas->semester->nama }} ({{ $kelas->semester->kode }})
+                        @endif
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    @if ($this->sesiAktif)
+                        <button
+                            type="button"
+                            wire:click="klikSelesaikanSesi"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-neutral-800 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-900"
+                        >
+                            <i data-lucide="square" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                            Selesaikan sesi
+                        </button>
+                    @elseif ($this->bisaTampilMulaiSesi)
+                        <button
+                            type="button"
+                            wire:click="klikMulaiSesi"
+                            class="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-sky-700"
+                        >
+                            <i data-lucide="play-circle" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                            Mulai sesi
+                        </button>
+                    @endif
+                </div>
+            </div>
+            @if ($submitError)
+                <p class="mt-2 text-sm text-rose-600" role="alert">{{ $submitError }}</p>
+            @endif
         </div>
         <div class="flex flex-wrap gap-4 p-5 text-sm text-neutral-600">
             <span class="inline-flex items-center gap-1.5">
@@ -68,6 +102,9 @@
     <div class="flex gap-2 rounded-xl bg-neutral-100 p-1.5">
         <button type="button" wire:click="setTab('informasi')" class="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition {{ $tab === 'informasi' ? 'bg-white text-neutral-900 shadow-border' : 'text-neutral-600 hover:text-neutral-900' }}">
             Informasi Jadwal
+        </button>
+        <button type="button" wire:click="setTab('kehadiran')" class="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition {{ $tab === 'kehadiran' ? 'bg-white text-neutral-900 shadow-border' : 'text-neutral-600 hover:text-neutral-900' }}">
+            Kehadiran
         </button>
         <button type="button" wire:click="setTab('materi')" class="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition {{ $tab === 'materi' ? 'bg-white text-neutral-900 shadow-border' : 'text-neutral-600 hover:text-neutral-900' }}">
             Materi
@@ -169,6 +206,90 @@
                     </button>
                 </div>
             </form>
+        </div>
+    @endif
+
+    @if ($tab === 'kehadiran')
+        @php
+            $perkuliahan = $this->perkuliahanUntukKehadiran;
+            $sesiAktif = $perkuliahan && $perkuliahan->waktu_mulai && ! $perkuliahan->waktu_selesai;
+            $mahasiswaRows = $this->kehadiranMahasiswa;
+            $statusBadge = [
+                'hadir' => 'bg-emerald-100 text-emerald-800',
+                'izin' => 'bg-sky-100 text-sky-800',
+                'sakit' => 'bg-amber-100 text-amber-800',
+                'alfa' => 'bg-rose-100 text-rose-800',
+            ];
+            $statusLabel = ['hadir' => 'Hadir', 'izin' => 'Izin', 'sakit' => 'Sakit', 'alfa' => 'Alfa'];
+        @endphp
+        <div class="rounded-2xl bg-white p-6 shadow-border">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-neutral-900">Kehadiran</h3>
+                @if ($perkuliahan)
+                    <a
+                        href="{{ route('dosen.kehadiran.detail', $perkuliahan->id) }}"
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-neutral-800"
+                    >
+                        <i data-lucide="clipboard-check" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                        Isi Kehadiran
+                    </a>
+                @endif
+            </div>
+
+            <p class="text-sm text-neutral-600">
+                Daftar mahasiswa diambil dari <strong>KRS</strong> yang sudah disetujui untuk kelas ini. Status
+                kehadiran mengacu pada <strong>rekaman perkuliahan</strong> untuk slot jadwal ini (sesi berlangsung
+                atau sesi terakhir).
+            </p>
+
+            @if ($perkuliahan)
+                <p class="mt-2 text-xs text-neutral-500">
+                    {{ $sesiAktif ? 'Sesi sedang berlangsung' : 'Sesi terakhir untuk slot ini' }} — kehadiran
+                    (perkuliahan #{{ $perkuliahan->id }}).
+                </p>
+            @else
+                <div class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-100">
+                    Belum ada rekaman perkuliahan untuk slot jadwal ini.
+                </div>
+            @endif
+
+            @if ($perkuliahan)
+                <div class="mt-4 overflow-x-auto rounded-xl border border-neutral-200">
+                    <table class="min-w-full divide-y divide-neutral-200 text-left text-sm">
+                        <thead class="bg-neutral-50">
+                            <tr>
+                                <th class="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">No</th>
+                                <th class="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">NIM</th>
+                                <th class="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Nama</th>
+                                <th class="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Prodi</th>
+                                <th class="px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">Status Kehadiran</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-neutral-100 bg-white">
+                            @forelse ($mahasiswaRows as $idx => $row)
+                                <tr wire:key="kehadiran-tab-{{ $row['id_krs'] }}">
+                                    <td class="whitespace-nowrap px-3 py-2 text-neutral-500">{{ $idx + 1 }}</td>
+                                    <td class="whitespace-nowrap px-3 py-2 font-mono text-neutral-800">{{ $row['mahasiswa']['nim'] }}</td>
+                                    <td class="px-3 py-2 font-medium text-neutral-900">{{ $row['mahasiswa']['nama'] }}</td>
+                                    <td class="px-3 py-2 text-neutral-600">{{ $row['mahasiswa']['prodi']['nama'] ?? '—' }}</td>
+                                    <td class="px-3 py-2">
+                                        <span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold {{ $statusBadge[$row['kehadiran']['status'] ?? ''] ?? 'bg-neutral-100 text-neutral-600' }}">
+                                            {{ $statusLabel[$row['kehadiran']['status'] ?? ''] ?? '—' }}
+                                        </span>
+                                        @if ($row['kehadiran']['keterangan'] ?? null)
+                                            <span class="mt-1 block text-xs text-neutral-500">{{ $row['kehadiran']['keterangan'] }}</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="5" class="px-3 py-6 text-center text-neutral-500">Tidak ada mahasiswa terdaftar di KRS untuk kelas ini.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            @endif
         </div>
     @endif
 
@@ -382,6 +503,98 @@
                         </table>
                     </div>
                 @endif
+            </div>
+        </div>
+    @endif
+
+    @php
+        $tanggalCekJadwal = $jadwal->tanggal ?? \Carbon\Carbon::now();
+        $labelJadwalSingkat = $tanggalCekJadwal->translatedFormat('l, d F Y')
+            .', pukul '.substr((string) $jadwal->jam_mulai, 0, 5).'–'.substr((string) $jadwal->jam_selesai, 0, 5);
+    @endphp
+
+    {{-- Modal 1/2 mulai sesi: isi materi. Sama persis dengan modal "konfirmasi_mulai_materi" di FE. --}}
+    @if ($mulaiDialog === 'konfirmasi_mulai_materi')
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 px-4">
+            <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-border-lg">
+                <h3 class="text-base font-semibold text-neutral-900">Mulai sesi perkuliahan?</h3>
+                <p class="mt-2 text-sm text-neutral-600">
+                    <strong>Waktu mulai</strong> di server akan dicatat otomatis dari waktu saat ini. Isian di bawah
+                    awalnya diambil dari <strong>bahasan jadwal</strong> (tab Materi); Anda boleh mengubahnya — teks
+                    akan disimpan ke kolom <strong>materi</strong> pada rekaman perkuliahan.
+                </p>
+                <label class="mt-4 block text-sm font-medium text-neutral-800">
+                    Materi / ringkasan sesi
+                    <textarea
+                        wire:model="modalMateriSesi"
+                        rows="5"
+                        placeholder="Contoh: topik yang akan dibahas pada sesi ini…"
+                        class="mt-1.5 w-full resize-y rounded-lg px-3 py-2 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 shadow-border"
+                    ></textarea>
+                </label>
+                <div class="mt-6 flex justify-end gap-2">
+                    <button type="button" wire:click="cancelMulaiDialog" class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 shadow-border">
+                        Batal
+                    </button>
+                    <button type="button" wire:click="konfirmasiMulaiDariModal" class="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700">
+                        Mulai sekarang
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Modal 2/2 mulai sesi: peringatan di luar jendela jadwal. Sama persis dengan modal
+         "luar_jadwal" di FE — tetap bisa dilanjutkan. --}}
+    @if ($mulaiDialog === 'luar_jadwal')
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 px-4">
+            <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-border-lg ring-1 ring-amber-200">
+                <h3 class="text-base font-semibold text-amber-900">Waktu tidak sesuai jadwal</h3>
+                <p class="mt-2 text-sm text-neutral-700">
+                    Waktu sekarang di luar jendela jadwal yang diizinkan (mulai paling cepat 30 menit sebelum jam
+                    mulai, hingga jam selesai).
+                </p>
+                <p class="mt-2 text-sm font-medium text-neutral-800">Jadwal: {{ $labelJadwalSingkat }}</p>
+                <p class="mt-2 text-sm text-neutral-600">Tetap lanjutkan? Waktu mulai sesi akan tetap dicatat sebagai waktu saat ini.</p>
+                <div class="mt-6 flex justify-end gap-2">
+                    <button type="button" wire:click="cancelMulaiDialog" class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 shadow-border">
+                        Batal
+                    </button>
+                    <button type="button" wire:click="konfirmasiMulaiLuarJadwal" class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-700">
+                        Tetap mulai
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Modal selesaikan sesi: isi realisasi materi. Sama persis dengan modal "selesaiDialog" di FE. --}}
+    @if ($selesaiDialogOpen)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 px-4">
+            <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-border-lg">
+                <h3 class="text-base font-semibold text-neutral-900">Selesaikan sesi?</h3>
+                <p class="mt-2 text-sm text-neutral-600">
+                    <strong>Waktu selesai</strong> akan dicatat otomatis dari waktu saat ini. Isi ringkasan apa yang
+                    benar-benar dibahas pada sesi ini (disimpan ke <strong>realisasi materi</strong> pada rekaman
+                    perkuliahan).
+                </p>
+                <label class="mt-4 block text-sm font-medium text-neutral-800">
+                    Realisasi materi / pembahasan
+                    <textarea
+                        wire:model="formRealisasiMateriSelesai"
+                        rows="5"
+                        placeholder="Contoh: materi yang terealisasi, catatan tambahan…"
+                        class="mt-1.5 w-full resize-y rounded-lg px-3 py-2 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 shadow-border"
+                    ></textarea>
+                </label>
+                <div class="mt-6 flex justify-end gap-2">
+                    <button type="button" wire:click="cancelSelesaiDialog" class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 shadow-border">
+                        Batal
+                    </button>
+                    <button type="button" wire:click="submitSelesaiSesi" class="inline-flex items-center gap-2 rounded-lg bg-neutral-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-900">
+                        Simpan &amp; akhiri sesi
+                    </button>
+                </div>
             </div>
         </div>
     @endif
