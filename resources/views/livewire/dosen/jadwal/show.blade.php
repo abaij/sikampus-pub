@@ -38,6 +38,13 @@
 @endphp
 
 <div class="space-y-6">
+    @if (session('status'))
+        <div class="flex gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            <i data-lucide="check-circle" class="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true"></i>
+            <span>{{ session('status') }}</span>
+        </div>
+    @endif
+
     <div class="overflow-hidden rounded-2xl bg-white shadow-border">
         <div class="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 bg-neutral-50 px-5 py-4">
             <div>
@@ -78,6 +85,10 @@
         </div>
     </div>
 
+    {{-- Tombol "Tambah Slot" sengaja disembunyikan sementara — ternyata dosen tidak seharusnya
+         bisa membuat jadwal sendiri. Aksi Livewire-nya (openTambahSlotModal/saveTambahSlot di
+         App\Livewire\Dosen\Jadwal\Show) dan modalnya di bawah tetap dibiarkan apa adanya, cuma
+         jadi tidak terjangkau dari UI selama tombol ini tidak ada. --}}
     <h3 class="text-base font-semibold text-neutral-900">Slot jadwal pertemuan</h3>
 
     @php $rows = $this->jadwalRows; @endphp
@@ -153,6 +164,78 @@
                         @endforeach
                     </tbody>
                 </table>
+            </div>
+        </div>
+    @endif
+
+    {{-- Modal ini tidak lagi punya tombol pemicu (lihat catatan di atas tabel Slot jadwal
+         pertemuan) — showTambahSlotModal tidak akan pernah bernilai true dari UI mana pun sekarang,
+         jadi blok ini praktis tidak pernah tampil. Dibiarkan apa adanya sesuai instruksi: hanya
+         tombolnya yang disembunyikan/dihapus, bukan fungsinya. --}}
+    @if ($showTambahSlotModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 px-4">
+            <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-border-lg">
+                <h3 class="text-base font-semibold text-neutral-900">Tambah Slot Jadwal Pertemuan</h3>
+                <p class="mt-1 text-sm text-neutral-500">Untuk kelas {{ $kelas->kode }} — {{ $km?->namaMatkulLabel() ?? '—' }}.</p>
+
+                <form wire:submit="saveTambahSlot" class="mt-4 space-y-4">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Hari</label>
+                            <x-searchable-select
+                                model="tambahHari"
+                                :options="collect(\App\Models\Jadwal::HARI)->mapWithKeys(fn ($h) => [$h => ucfirst($h)])->all()"
+                                placeholder="— Tidak berulang mingguan —"
+                            />
+                            @error('tambahHari') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Tanggal (jika hanya sekali pertemuan)</label>
+                            <input type="date" wire:model="tambahTanggal" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('tambahTanggal') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('tambahTanggal') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jam Mulai <span class="text-red-500">*</span></label>
+                            <input type="time" wire:model="tambahJamMulai" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('tambahJamMulai') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('tambahJamMulai') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jam Selesai <span class="text-red-500">*</span></label>
+                            <input type="time" wire:model="tambahJamSelesai" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('tambahJamSelesai') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('tambahJamSelesai') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Ruangan</label>
+                            <x-searchable-select model="tambahIdRuangan" :options="$this->ruanganOptions" placeholder="— Pilih ruangan —" />
+                            @error('tambahIdRuangan') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jenis Kuliah</label>
+                            <x-searchable-select model="tambahIdJenisKuliah" :options="$this->jenisKuliahOptions" placeholder="— Pilih jenis kuliah —" />
+                            @error('tambahIdJenisKuliah') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Pertemuan ke-</label>
+                            <input type="number" min="1" max="99" wire:model="tambahUrutanPertemuan" placeholder="Opsional" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('tambahUrutanPertemuan') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('tambahUrutanPertemuan') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Bahasan</label>
+                            <textarea wire:model="tambahBahasan" rows="3" placeholder="Ringkasan topik/bahasan pertemuan ini" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('tambahBahasan') ring-2 ring-red-500 @enderror shadow-border"></textarea>
+                            @error('tambahBahasan') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 border-t border-neutral-200 pt-4">
+                        <button type="button" wire:click="closeTambahSlotModal" class="rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border hover:bg-neutral-50">
+                            Batal
+                        </button>
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800">
+                            <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i>
+                            Simpan
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     @endif
