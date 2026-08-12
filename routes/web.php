@@ -16,6 +16,7 @@ use App\Http\Controllers\SurveyController;
 use App\Http\Controllers\Web\AdminWebLoginController;
 use App\Http\Controllers\Web\DosenBimbinganExportController;
 use App\Http\Controllers\Web\DosenExportController;
+use App\Http\Controllers\Web\ImpersonateController;
 use App\Http\Controllers\Web\KrsCetakController;
 use App\Http\Controllers\Web\LoginController;
 use App\Http\Controllers\Web\MahasiswaExportController;
@@ -235,6 +236,13 @@ Route::livewire('/reset-password', ResetPasswordLivewire::class)->name('reset-pa
 Route::post('/logout', [LoginController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
+
+// "Kembali ke admin" (fitur "Login as", lihat App\Http\Controllers\Web\ImpersonateController) —
+// sengaja di luar grup 'admin' & role.admin.web: selama impersonate, identitas sesi adalah
+// dosen/mahasiswa target, jadi rute ini harus tetap bisa dituju walau role.admin.web menolaknya.
+Route::post('/impersonate/stop', [ImpersonateController::class, 'stop'])
+    ->middleware('auth')
+    ->name('impersonate.stop');
 
 Route::get('/dashboard', [SuperadminWebLoginController::class, 'dashboard'])
     ->middleware(['auth', 'superadmin.web'])
@@ -622,6 +630,15 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
 
         Route::livewire('pengguna/{id}/edit', PenggunaForm::class)->name('pengguna.edit');
         Route::livewire('pengguna/{id}', PenggunaShow::class)->name('pengguna.show');
+
+        // "Login as" (App\Http\Controllers\Web\ImpersonateController) — dibatasi Superadmin saja
+        // lewat middleware tambahan, sama posturnya dengan grup "Menu Sistem" di bawah: bisa
+        // menyamar jadi user lain jelas lebih sensitif daripada sekadar mengelola akun via CRUD
+        // biasa, jadi tidak didelegasikan lewat permission ('manage pengguna') seperti CRUD
+        // pengguna lainnya.
+        Route::middleware('role.admin.superadmin')->group(function (): void {
+            Route::post('pengguna/{id}/impersonate', [ImpersonateController::class, 'start'])->name('pengguna.impersonate.start');
+        });
 
         // Menu Sistem — kredensial SMTP dianggap privilege-sensitive (bisa dipakai untuk
         // menyadap email reset password, dst), jadi dibatasi Superadmin saja lewat middleware

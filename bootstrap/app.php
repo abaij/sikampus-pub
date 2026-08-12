@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnforceImpersonationTimeout;
 use App\Http\Middleware\EnsurePanelPermission;
 use App\Http\Middleware\EnsurePartnerApiKey;
 use App\Http\Middleware\EnsureUserHasKeuanganAccess;
@@ -53,9 +54,12 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleCors::class,
         ]);
 
-        // Aktifkan CORS middleware untuk web routes juga (untuk preflight requests)
+        // Aktifkan CORS middleware untuk web routes juga (untuk preflight requests), plus
+        // auto-expire sesi "Login as" (lihat App\Http\Middleware\EnforceImpersonationTimeout) —
+        // global karena harus jalan di rute admin, dosen, maupun mahasiswa.
         $middleware->web(append: [
             HandleCors::class,
+            EnforceImpersonationTimeout::class,
         ]);
 
         // Daftarkan alias untuk middleware role-based

@@ -26,6 +26,7 @@
     <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js" defer></script>
 </head>
 <body class="min-h-screen bg-white text-neutral-900 antialiased">
+@include('partials.impersonate-banner')
 @php
     // Panel admin (Livewire) punya dashboard & logout sendiri; dosen/mahasiswa masing-masing
     // punya dashboard sendiri tapi berbagi mekanisme logout generik dengan panel maintenance

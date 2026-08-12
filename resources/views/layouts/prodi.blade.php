@@ -27,6 +27,7 @@
     <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js" defer></script>
 </head>
 <body class="min-h-screen bg-neutral-50 text-neutral-900 antialiased">
+@include('partials.impersonate-banner')
 @php
     $authUser = auth()->user();
     $userInitials = $authUser

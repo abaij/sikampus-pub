@@ -1,21 +1,32 @@
 @section('title', 'Bimbingan Akademik — ' . config('app.name'))
-@section('header_title', 'Bimbingan Akademik')
-@section('header_subtitle', 'Riwayat catatan bimbingan dengan dosen wali per semester.')
 
-@section('page_actions')
-    @if ($this->dosenWali)
-        <button
-            type="button"
-            wire:click="openTambah"
-            class="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
-        >
-            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-            Tambah catatan
-        </button>
-    @endif
-@endsection
-
+{{-- Tombol "Tambah catatan" sengaja TIDAK di @section('page_actions') — Livewire hanya
+     memasang wire:id ke root HTML yang berada di LUAR @section apa pun (lihat penjelasan lengkap
+     di komentar serupa pada livewire/mahasiswa/krs/index.blade.php); wire:click di dalam
+     page_actions tidak pernah terikat ke komponen. Header di bawah ini meniru markup
+     @hasSection('header_title') milik layouts.mahasiswa supaya tampilan tetap sama, tapi harus
+     jadi ANAK PERTAMA dari div ini (bukan sibling) — Livewire cuma mengizinkan satu elemen root
+     per komponen. --}}
 <div class="space-y-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <h1 class="truncate text-2xl font-semibold tracking-tight text-neutral-900">Bimbingan Akademik</h1>
+            <p class="mt-1 text-sm text-neutral-500">Riwayat catatan bimbingan dengan dosen wali per semester.</p>
+        </div>
+        @if ($this->dosenWali)
+            <div class="flex shrink-0 items-center gap-2">
+                <button
+                    type="button"
+                    wire:click="openTambah"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
+                >
+                    <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+                    Tambah catatan
+                </button>
+            </div>
+        @endif
+    </div>
+
     @if (session('status'))
         <div class="flex gap-3 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             <i data-lucide="check-circle" class="h-5 w-5 shrink-0 text-emerald-600" aria-hidden="true"></i>

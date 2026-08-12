@@ -32,6 +32,21 @@
         <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
         Kembali
     </a>
+    {{-- "Login as" (App\Http\Controllers\Web\ImpersonateController) — hanya Superadmin, hanya
+         untuk akun dosen/mahasiswa, dan bukan diri sendiri. Form POST biasa (bukan aksi Livewire)
+         karena aksi ini mengganti identitas sesi — pola yang sama dengan logout/login. --}}
+    @if ($isSuperadmin && in_array($pengguna->role, ['dosen', 'mahasiswa'], true) && $pengguna->id !== auth()->id())
+        <form method="post" action="{{ route('admin.pengguna.impersonate.start', $pengguna->id) }}">
+            @csrf
+            <button
+                type="submit"
+                class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
+            >
+                <i data-lucide="venetian-mask" class="h-4 w-4" aria-hidden="true"></i>
+                Login sebagai {{ $roleLabels[$pengguna->role] ?? $pengguna->role }}
+            </button>
+        </form>
+    @endif
     @if (\App\Support\PanelAccess::can(auth()->user(), 'pengguna', 'manage'))
         <a
             href="{{ route('admin.pengguna.edit', $pengguna->id) }}"

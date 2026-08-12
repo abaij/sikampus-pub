@@ -1,21 +1,36 @@
 @section('title', 'Kartu Rencana Studi — ' . config('app.name'))
-@section('header_title', 'Kartu Rencana Studi (KRS)')
 
-@section('page_actions')
-    @if (count($this->krsBySemester) > 0)
-        <button
-            type="button"
-            wire:click="exportPdf"
-            wire:loading.attr="disabled"
-            class="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:opacity-50"
-        >
-            <i data-lucide="file-down" class="h-4 w-4" aria-hidden="true"></i>
-            Export PDF
-        </button>
-    @endif
-@endsection
-
+{{-- Tombol export sengaja TIDAK ditaruh di @section('page_actions'): section itu dirender oleh
+     layouts.mahasiswa lewat @yield di luar elemen root yang di-hydrate Livewire (Livewire hanya
+     menyisipkan wire:id ke root HTML yang TIDAK berada di dalam @section manapun — lihat
+     SupportPageComponents::renderContentsIntoLayout, yang membungkus konten non-section sebagai
+     @section('content') lalu me-render sisanya lewat @extends biasa). Tombol dengan wire:click di
+     dalam @section('page_actions') tidak akan pernah mendapat wire:id di elemen leluhurnya,
+     sehingga klik tidak terikat ke komponen manapun dan tidak melakukan apa-apa. Header di bawah
+     ini meniru markup @hasSection('header_title') milik layouts.mahasiswa supaya tampilannya
+     sama, tapi harus jadi ANAK PERTAMA dari div ini (bukan sibling) — Livewire cuma mengizinkan
+     satu elemen root per komponen, dua div sejajar di sini akan melempar
+     MultipleRootElementsDetected. --}}
 <div class="space-y-8">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <h1 class="truncate text-2xl font-semibold tracking-tight text-neutral-900">Kartu Rencana Studi (KRS)</h1>
+        </div>
+        @if (count($this->krsBySemester) > 0)
+            <div class="flex shrink-0 items-center gap-2">
+                <button
+                    type="button"
+                    wire:click="exportPdf"
+                    wire:loading.attr="disabled"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:opacity-50"
+                >
+                    <i data-lucide="file-down" class="h-4 w-4" aria-hidden="true"></i>
+                    Export PDF
+                </button>
+            </div>
+        @endif
+    </div>
+
     @if (count($this->krsBySemester) === 0)
         <div class="rounded-2xl bg-white p-10 text-center shadow-border">
             <i data-lucide="book-open" class="mx-auto h-10 w-10 text-neutral-400" aria-hidden="true"></i>
