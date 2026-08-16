@@ -168,6 +168,37 @@ it('records an error when no krs exists for the mahasiswa and mata kuliah', func
     expect(Mahasiswa::where('nim', '2024000003')->exists())->toBeTrue();
 });
 
+it('mentions the prodi of the matched kelas when the krs lookup fails', function () {
+    $admin = adminUser();
+    $prodiMahasiswa = Prodi::factory()->create();
+    $prodiKelas = Prodi::factory()->create(['nama' => 'Prodi Lain']);
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000004', 'id_prodi' => $prodiMahasiswa->id]);
+    $matkul = Matkul::factory()->create(['id_prodi' => $prodiKelas->id, 'kode' => 'MK004']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['id_matkul' => $matkul->id]);
+    $semester = Semester::factory()->create(['kode' => '20244']);
+    // Kelas hanya ada di prodi lain (bukan prodi mahasiswa) — fallback query di controller/component
+    // akan tetap menemukannya walau tanpa filter prodi, tapi mahasiswa tidak punya KRS untuknya.
+    Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_prodi' => $prodiKelas->id,
+        'id_semester' => $semester->id,
+    ]);
+
+    $file = makeNilaiImportFile([
+        ['2024000004', 'MK004', '20244', '', '', ''],
+    ]);
+
+    $result = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 0)
+        ->get('result');
+
+    expect($result['errors'])->toHaveCount(1);
+    expect($result['errors'][0])->toContain('Prodi Lain');
+});
+
 it('redirects unauthenticated users to the login page', function () {
     $this->get(route('admin.akademik.nilai.import'))
         ->assertRedirect(route('login'));

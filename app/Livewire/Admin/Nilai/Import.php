@@ -136,13 +136,15 @@ class Import extends Component
                 }
 
                 // Prioritaskan kelas dari prodi mahasiswa, baru cari tanpa filter prodi.
-                $kelas = Kelas::whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
+                $kelas = Kelas::with('prodi')
+                    ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                     ->where('id_semester', $semester->id)
                     ->where('id_prodi', $mahasiswa->id_prodi)
                     ->first();
 
                 if (! $kelas) {
-                    $kelas = Kelas::whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
+                    $kelas = Kelas::with('prodi')
+                        ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                         ->where('id_semester', $semester->id)
                         ->first();
                 }
@@ -159,7 +161,12 @@ class Import extends Component
                     ->first();
 
                 if (! $krs) {
-                    $errors[] = "Baris {$rowNumber}: KRS dengan NIM '{$nim}', mata kuliah '{$kodeMatkul}', dan semester '{$kodeSemester}' tidak ditemukan.";
+                    // Kelas yang cocok bisa saja berasal dari prodi lain (fallback query di atas
+                    // tidak memfilter prodi) — sebutkan prodi kelasnya supaya jelas kenapa KRS
+                    // mahasiswa tidak nyambung ke kelas ini, bukan cuma "tidak ditemukan".
+                    $prodiKelas = $kelas->prodi->nama ?? null;
+                    $errors[] = "Baris {$rowNumber}: KRS dengan NIM '{$nim}', mata kuliah '{$kodeMatkul}', dan semester '{$kodeSemester}' tidak ditemukan."
+                        .($prodiKelas ? " Kelas yang cocok ditemukan pada prodi '{$prodiKelas}'." : '');
 
                     continue;
                 }
