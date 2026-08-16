@@ -194,6 +194,40 @@ it('records an error for an invalid status value', function () {
     expect($result['errors'])->not->toBeEmpty();
 });
 
+it('mentions the prodi of the matched kelas when it is out of the admin scope', function () {
+    $prodiMahasiswa = Prodi::factory()->create();
+    $prodiKelas = Prodi::factory()->create(['nama' => 'Prodi Lain']);
+
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000006', 'id_prodi' => $prodiMahasiswa->id]);
+    $matkul = Matkul::factory()->create(['id_prodi' => $prodiKelas->id, 'kode' => 'MK006']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['id_matkul' => $matkul->id]);
+    $semester = Semester::factory()->create(['kode' => '20246']);
+    // Kelas hanya ada di prodi lain (bukan prodi mahasiswa) — fallback query akan tetap
+    // menemukannya walau tanpa filter prodi, tapi kelasnya di luar scope admin.
+    Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_prodi' => $prodiKelas->id,
+        'id_semester' => $semester->id,
+    ]);
+
+    $admin = adminUser('admin_akademik');
+    scopeAdminToProdi($admin, $prodiMahasiswa->id);
+
+    $file = makeKrsImportFile([
+        ['2024000006', 'MK006', '20246', ''],
+    ]);
+
+    $result = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 0)
+        ->get('result');
+
+    expect($result['errors'])->toHaveCount(1);
+    expect($result['errors'][0])->toContain('Prodi Lain');
+});
+
 it('redirects unauthenticated users to the login page', function () {
     $this->get(route('admin.akademik.krs.import'))
         ->assertRedirect(route('login'));

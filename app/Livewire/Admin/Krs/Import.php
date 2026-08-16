@@ -142,13 +142,15 @@ class Import extends Component
                 }
 
                 // Prioritaskan kelas dari prodi mahasiswa, baru cari tanpa filter prodi.
-                $kelas = Kelas::whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
+                $kelas = Kelas::with('prodi')
+                    ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                     ->where('id_semester', $semester->id)
                     ->where('id_prodi', $mahasiswa->id_prodi)
                     ->first();
 
                 if (! $kelas) {
-                    $kelas = Kelas::whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
+                    $kelas = Kelas::with('prodi')
+                        ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                         ->where('id_semester', $semester->id)
                         ->first();
                 }
@@ -166,7 +168,12 @@ class Import extends Component
                         continue;
                     }
                     if (! in_array((int) $kelas->id_prodi, $allowedProdiIds, true)) {
-                        $errors[] = "Baris {$rowNumber}: Anda tidak memiliki akses ke kelas mata kuliah '{$kodeMatkul}' (prodi di luar scope).";
+                        // Kelas yang cocok bisa saja berasal dari prodi lain (fallback query di
+                        // atas tidak memfilter prodi) — sebutkan prodi kelasnya supaya jelas kenapa
+                        // ditolak, bukan cuma "di luar scope".
+                        $prodiKelas = $kelas->prodi->nama ?? null;
+                        $errors[] = "Baris {$rowNumber}: Anda tidak memiliki akses ke kelas mata kuliah '{$kodeMatkul}' (prodi di luar scope)."
+                            .($prodiKelas ? " Kelas ini berasal dari prodi '{$prodiKelas}'." : '');
 
                         continue;
                     }
