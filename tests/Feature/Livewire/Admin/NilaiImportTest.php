@@ -122,21 +122,21 @@ it('updates an existing nilai row instead of creating a duplicate', function () 
     expect((float) $existing->fresh()->angka_mutu)->toBe(90.0);
 });
 
-it('records an error when the mahasiswa nim cannot be found', function () {
+it('records an error when the mahasiswa nim cannot be found and shows a copy-log button', function () {
     $file = makeNilaiImportFile([
         ['9999999999', 'MK001', '20241', '', '', ''],
     ]);
 
     $admin = adminUser();
 
-    $result = Livewire::actingAs($admin)
+    $component = Livewire::actingAs($admin)
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
         ->assertSet('result.success_count', 0)
-        ->get('result');
+        ->assertSee('Salin Log');
 
-    expect($result['errors'])->not->toBeEmpty();
+    expect($component->get('result')['errors'])->not->toBeEmpty();
 });
 
 it('records an error when no krs exists for the mahasiswa and mata kuliah', function () {

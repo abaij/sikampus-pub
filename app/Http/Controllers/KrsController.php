@@ -1542,8 +1542,9 @@ class KrsController extends Controller
                     ->exists();
 
                 if ($exists) {
+                    // Sengaja tidak masuk $errors — ini bukan masalah yang perlu ditinjau admin,
+                    // cukup dihitung lewat skip_count (ditampilkan di kartu "Dilewati").
                     $skipCount++;
-                    $errors[] = "Baris {$rowNumber}: KRS dengan NIM '{$nim}' dan kelas '{$kodeMatkul}' sudah ada (diabaikan).";
 
                     continue;
                 }

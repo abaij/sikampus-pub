@@ -91,8 +91,40 @@
             </div>
 
             @if ($result['errors'] !== [])
-                <div class="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                    <p class="font-semibold">Peringatan ({{ count($result['errors']) }} baris):</p>
+                <div
+                    class="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+                    x-data="{
+                        copied: false,
+                        copyLog() {
+                            const text = @js(implode(PHP_EOL, $result['errors']));
+                            const done = () => { this.copied = true; setTimeout(() => this.copied = false, 2000); };
+                            if (navigator.clipboard && window.isSecureContext) {
+                                navigator.clipboard.writeText(text).then(done);
+                                return;
+                            }
+                            const el = document.createElement('textarea');
+                            el.value = text;
+                            el.style.position = 'fixed';
+                            el.style.opacity = '0';
+                            document.body.appendChild(el);
+                            el.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(el);
+                            done();
+                        },
+                    }"
+                >
+                    <div class="flex items-center justify-between gap-3">
+                        <p class="font-semibold">Peringatan ({{ count($result['errors']) }} baris):</p>
+                        <button
+                            type="button"
+                            @click="copyLog()"
+                            class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition hover:bg-amber-100"
+                        >
+                            <i data-lucide="clipboard-copy" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                            <span x-text="copied ? 'Tersalin!' : 'Salin Log'"></span>
+                        </button>
+                    </div>
                     <ul class="mt-2 max-h-80 list-inside list-disc space-y-0.5 overflow-y-auto">
                         @foreach ($result['errors'] as $err)
                             <li>{{ $err }}</li>

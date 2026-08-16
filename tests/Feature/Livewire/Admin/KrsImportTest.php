@@ -138,7 +138,7 @@ it('falls back to the active semester when kode semester is left blank', functio
     expect(Krs::where('id_mahasiswa', $fixture['mahasiswa']->id)->where('id_kelas', $fixture['kelas']->id)->exists())->toBeTrue();
 });
 
-it('skips a row whose mahasiswa already has krs for that kelas', function () {
+it('skips a row whose mahasiswa already has krs for that kelas without logging it as a warning', function () {
     $admin = adminUser();
     $prodi = Prodi::factory()->create();
     $fixture = makeKrsImportFixture($prodi, '2024000004', 'MK004', '20244');
@@ -148,31 +148,33 @@ it('skips a row whose mahasiswa already has krs for that kelas', function () {
         ['2024000004', 'MK004', '20244', ''],
     ]);
 
-    Livewire::actingAs($admin)
+    $component = Livewire::actingAs($admin)
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
         ->assertSet('result.success_count', 0)
-        ->assertSet('result.skip_count', 1);
+        ->assertSet('result.skip_count', 1)
+        ->assertDontSee('diabaikan');
 
+    expect($component->get('result')['errors'])->toBe([]);
     expect(Krs::where('id_mahasiswa', $fixture['mahasiswa']->id)->where('id_kelas', $fixture['kelas']->id)->count())->toBe(1);
 });
 
-it('records an error when the mahasiswa nim cannot be found', function () {
+it('records an error when the mahasiswa nim cannot be found and shows a copy-log button', function () {
     $admin = adminUser();
 
     $file = makeKrsImportFile([
         ['9999999999', 'MK001', '20241', ''],
     ]);
 
-    $result = Livewire::actingAs($admin)
+    $component = Livewire::actingAs($admin)
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
         ->assertSet('result.success_count', 0)
-        ->get('result');
+        ->assertSee('Salin Log');
 
-    expect($result['errors'])->not->toBeEmpty();
+    expect($component->get('result')['errors'])->not->toBeEmpty();
 });
 
 it('records an error for an invalid status value', function () {
