@@ -2404,7 +2404,12 @@ class NilaiController extends Controller
                 }
 
                 // Find matkul by kode
-                $matkul = Matkul::where('kode', $kodeMatkul)->first();
+                // Satu kode mata kuliah bisa dipakai beberapa prodi sekaligus, masing-masing
+                // sebagai baris matkul terpisah (mis. 'MKW201' ada di 3 prodi). ->first() polos
+                // memilih baris milik prodi mana saja, sehingga pencarian kelas di bawah meleset
+                // ke kurikulum prodi lain — kelasnya dilaporkan "tidak ditemukan" padahal ada.
+                $matkul = Matkul::where('kode', $kodeMatkul)->where('id_prodi', $mahasiswa->id_prodi)->first()
+                    ?: Matkul::where('kode', $kodeMatkul)->first();
                 if (!$matkul) {
                     $errors[] = "Baris {$rowNumber}: Mata kuliah dengan kode '{$kodeMatkul}' tidak ditemukan.";
                     continue;

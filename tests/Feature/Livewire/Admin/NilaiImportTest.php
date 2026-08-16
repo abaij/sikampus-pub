@@ -199,6 +199,44 @@ it('mentions the prodi of the matched kelas when the krs lookup fails', function
     expect($result['errors'][0])->toContain('Prodi Lain');
 });
 
+it('picks the matkul of the mahasiswa prodi when the same kode exists in several prodi', function () {
+    $admin = adminUser();
+
+    // Prodi lain sengaja dibuat lebih dulu supaya baris matkul-nya jadi kandidat ->first().
+    $prodiLain = Prodi::factory()->create();
+    $prodiMhs = Prodi::factory()->create();
+
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000009', 'id_prodi' => $prodiMhs->id]);
+    $semester = Semester::factory()->create(['kode' => '20249']);
+
+    // Kode mata kuliah yang sama dipakai dua prodi — persis kondisi 'MKW201' di data produksi.
+    $matkulLain = Matkul::factory()->create(['id_prodi' => $prodiLain->id, 'kode' => 'MKW999']);
+    KurikulumMatkul::factory()->create(['id_matkul' => $matkulLain->id]);
+
+    $matkulMhs = Matkul::factory()->create(['id_prodi' => $prodiMhs->id, 'kode' => 'MKW999', 'sks' => 3]);
+    $kmMhs = KurikulumMatkul::factory()->create(['id_matkul' => $matkulMhs->id]);
+    // Kelas + KRS HANYA ada untuk prodi mahasiswa.
+    $kelas = Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kmMhs->id,
+        'id_prodi' => $prodiMhs->id,
+        'id_semester' => $semester->id,
+    ]);
+    $krs = Krs::factory()->create(['id_mahasiswa' => $mahasiswa->id, 'id_kelas' => $kelas->id]);
+
+    $file = makeNilaiImportFile([
+        ['2024000009', 'MKW999', '20249', '90', 'A', 'true'],
+    ]);
+
+    $component = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1);
+
+    expect($component->get('result')['errors'])->toBe([]);
+    expect(Nilai::where('id_krs', $krs->id)->firstOrFail()->huruf_mutu)->toBe('A');
+});
+
 it('redirects unauthenticated users to the login page', function () {
     $this->get(route('admin.akademik.nilai.import'))
         ->assertRedirect(route('login'));

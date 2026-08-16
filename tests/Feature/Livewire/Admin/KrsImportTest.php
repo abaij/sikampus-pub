@@ -230,6 +230,43 @@ it('mentions the prodi of the matched kelas when it is out of the admin scope', 
     expect($result['errors'][0])->toContain('Prodi Lain');
 });
 
+it('picks the matkul of the mahasiswa prodi when the same kode exists in several prodi', function () {
+    $admin = adminUser();
+
+    // Prodi lain sengaja dibuat lebih dulu supaya baris matkul-nya jadi kandidat ->first().
+    $prodiLain = Prodi::factory()->create();
+    $prodiMhs = Prodi::factory()->create();
+
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000007', 'id_prodi' => $prodiMhs->id]);
+    $semester = Semester::factory()->create(['kode' => '20247']);
+
+    // Kode mata kuliah yang sama dipakai dua prodi — persis kondisi 'MKW201' di data produksi.
+    $matkulLain = Matkul::factory()->create(['id_prodi' => $prodiLain->id, 'kode' => 'MKW777']);
+    KurikulumMatkul::factory()->create(['id_matkul' => $matkulLain->id]);
+
+    $matkulMhs = Matkul::factory()->create(['id_prodi' => $prodiMhs->id, 'kode' => 'MKW777']);
+    $kmMhs = KurikulumMatkul::factory()->create(['id_matkul' => $matkulMhs->id]);
+    // Kelas HANYA ada untuk prodi mahasiswa.
+    $kelas = Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kmMhs->id,
+        'id_prodi' => $prodiMhs->id,
+        'id_semester' => $semester->id,
+    ]);
+
+    $file = makeKrsImportFile([
+        ['2024000007', 'MKW777', '20247', ''],
+    ]);
+
+    $component = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1);
+
+    expect($component->get('result')['errors'])->toBe([]);
+    expect(Krs::where('id_mahasiswa', $mahasiswa->id)->where('id_kelas', $kelas->id)->exists())->toBeTrue();
+});
+
 it('redirects unauthenticated users to the login page', function () {
     $this->get(route('admin.akademik.krs.import'))
         ->assertRedirect(route('login'));
