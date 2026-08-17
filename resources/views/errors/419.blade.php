@@ -3,6 +3,7 @@
 @section('title', 'Halaman Kedaluwarsa — ' . config('app.name'))
 
 @section('content')
+<div class="flex min-h-screen flex-col items-center justify-center px-4 py-12">
     <div class="mx-auto max-w-md rounded-2xl bg-white p-8 text-center shadow-border">
         <div class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
             <i data-lucide="refresh-cw" class="h-6 w-6" aria-hidden="true"></i>
@@ -31,4 +32,5 @@
             history.length > 1 ? history.back() : (window.location.href = '{{ route('login') }}');
         });
     </script>
+</div>
 @endsection
