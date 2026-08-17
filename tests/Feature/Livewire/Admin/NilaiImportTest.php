@@ -168,7 +168,7 @@ it('records an error when no krs exists for the mahasiswa and mata kuliah', func
     expect(Mahasiswa::where('nim', '2024000003')->exists())->toBeTrue();
 });
 
-it('mentions the prodi of the matched kelas when the krs lookup fails', function () {
+it('refuses to attach nilai to a kelas belonging to another prodi and names that prodi', function () {
     $admin = adminUser();
     $prodiMahasiswa = Prodi::factory()->create();
     $prodiKelas = Prodi::factory()->create(['nama' => 'Prodi Lain']);
@@ -176,8 +176,8 @@ it('mentions the prodi of the matched kelas when the krs lookup fails', function
     $matkul = Matkul::factory()->create(['id_prodi' => $prodiKelas->id, 'kode' => 'MK004']);
     $kurikulumMatkul = KurikulumMatkul::factory()->create(['id_matkul' => $matkul->id]);
     $semester = Semester::factory()->create(['kode' => '20244']);
-    // Kelas hanya ada di prodi lain (bukan prodi mahasiswa) — fallback query di controller/component
-    // akan tetap menemukannya walau tanpa filter prodi, tapi mahasiswa tidak punya KRS untuknya.
+    // Kelasnya HANYA ada di prodi lain. Dulu fallback lintas-prodi tetap memilih kelas ini;
+    // sekarang harus ditolak dan dilaporkan sebagai error.
     Kelas::factory()->create([
         'id_kurikulum_matkul' => $kurikulumMatkul->id,
         'id_prodi' => $prodiKelas->id,

@@ -2430,23 +2430,23 @@ class NilaiController extends Controller
                 }
 
                 // Find kelas by kurikulum_matkul and semester
-                // Prioritize kelas dari prodi mahasiswa
-                $kelas = Kelas::with('prodi')
-                    ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
+                // Kelas WAJIB milik prodi mahasiswa. Fallback lintas-prodi sudah dihapus: kalau
+                // prodi mahasiswa tidak punya kelasnya, nilai akan menempel ke kelas prodi lain.
+                $kelas = Kelas::whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                     ->where('id_semester', $semester->id)
                     ->where('id_prodi', $mahasiswa->id_prodi)
                     ->first();
 
-                // If not found, try without prodi filter
                 if (!$kelas) {
-                    $kelas = Kelas::with('prodi')
+                    // Kalau kelasnya ternyata ada di prodi lain, sebutkan — supaya admin tahu ini
+                    // soal ketidakcocokan prodi, bukan kelas yang belum dibuat.
+                    $prodiKelasLain = Kelas::with('prodi')
                         ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                         ->where('id_semester', $semester->id)
-                        ->first();
-                }
+                        ->first()?->prodi?->nama;
 
-                if (!$kelas) {
-                    $errors[] = "Baris {$rowNumber}: Kelas dengan semester '{$kodeSemester}' dan mata kuliah '{$kodeMatkul}' tidak ditemukan.";
+                    $errors[] = "Baris {$rowNumber}: Kelas dengan semester '{$kodeSemester}' dan mata kuliah '{$kodeMatkul}' tidak ditemukan pada prodi mahasiswa."
+                        .($prodiKelasLain ? " Kelas mata kuliah ini adanya di prodi '{$prodiKelasLain}', dan nilai tidak bisa ditempelkan ke kelas prodi lain." : '');
                     continue;
                 }
 
@@ -2457,12 +2457,9 @@ class NilaiController extends Controller
                     ->first();
 
                 if (!$krs) {
-                    // Kelas yang cocok bisa saja berasal dari prodi lain (fallback query di atas
-                    // tidak memfilter prodi) — sebutkan prodi kelasnya supaya jelas kenapa KRS
-                    // mahasiswa tidak nyambung ke kelas ini, bukan cuma "tidak ditemukan".
-                    $prodiKelas = $kelas->prodi->nama ?? null;
-                    $errors[] = "Baris {$rowNumber}: KRS dengan NIM '{$nim}', mata kuliah '{$kodeMatkul}', dan semester '{$kodeSemester}' tidak ditemukan."
-                        .($prodiKelas ? " Kelas yang cocok ditemukan pada prodi '{$prodiKelas}'." : '');
+                    // Kelas sudah dipastikan berprodi sama dengan mahasiswa, jadi kalau KRS-nya
+                    // tetap tidak ada, memang mahasiswanya belum mengontrak kelas ini.
+                    $errors[] = "Baris {$rowNumber}: KRS dengan NIM '{$nim}', mata kuliah '{$kodeMatkul}', dan semester '{$kodeSemester}' tidak ditemukan.";
                     continue;
                 }
 

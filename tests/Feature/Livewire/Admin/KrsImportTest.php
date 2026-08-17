@@ -196,7 +196,8 @@ it('records an error for an invalid status value', function () {
     expect($result['errors'])->not->toBeEmpty();
 });
 
-it('mentions the prodi of the matched kelas when it is out of the admin scope', function () {
+it('refuses to enrol a mahasiswa into a kelas belonging to another prodi and names that prodi', function () {
+    $admin = adminUser();
     $prodiMahasiswa = Prodi::factory()->create();
     $prodiKelas = Prodi::factory()->create(['nama' => 'Prodi Lain']);
 
@@ -204,16 +205,13 @@ it('mentions the prodi of the matched kelas when it is out of the admin scope', 
     $matkul = Matkul::factory()->create(['id_prodi' => $prodiKelas->id, 'kode' => 'MK006']);
     $kurikulumMatkul = KurikulumMatkul::factory()->create(['id_matkul' => $matkul->id]);
     $semester = Semester::factory()->create(['kode' => '20246']);
-    // Kelas hanya ada di prodi lain (bukan prodi mahasiswa) — fallback query akan tetap
-    // menemukannya walau tanpa filter prodi, tapi kelasnya di luar scope admin.
+    // Kelasnya HANYA ada di prodi lain. Dulu fallback lintas-prodi diam-diam mendaftarkan
+    // mahasiswa ke sini; sekarang harus ditolak dan dilaporkan sebagai error.
     Kelas::factory()->create([
         'id_kurikulum_matkul' => $kurikulumMatkul->id,
         'id_prodi' => $prodiKelas->id,
         'id_semester' => $semester->id,
     ]);
-
-    $admin = adminUser('admin_akademik');
-    scopeAdminToProdi($admin, $prodiMahasiswa->id);
 
     $file = makeKrsImportFile([
         ['2024000006', 'MK006', '20246', ''],
@@ -228,6 +226,8 @@ it('mentions the prodi of the matched kelas when it is out of the admin scope', 
 
     expect($result['errors'])->toHaveCount(1);
     expect($result['errors'][0])->toContain('Prodi Lain');
+    // Yang terpenting: tidak ada KRS yang terbuat ke kelas prodi lain.
+    expect(Krs::where('id_mahasiswa', $mahasiswa->id)->exists())->toBeFalse();
 });
 
 it('picks the matkul of the mahasiswa prodi when the same kode exists in several prodi', function () {

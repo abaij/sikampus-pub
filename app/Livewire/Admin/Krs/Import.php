@@ -147,42 +147,33 @@ class Import extends Component
                     continue;
                 }
 
-                // Prioritaskan kelas dari prodi mahasiswa, baru cari tanpa filter prodi.
-                $kelas = Kelas::with('prodi')
-                    ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
+                // Kelas WAJIB milik prodi mahasiswa. Fallback lintas-prodi sudah dihapus: kalau
+                // prodi mahasiswa tidak punya kelasnya, mendaftarkan dia ke kelas prodi lain
+                // menghasilkan data yang salah tanpa peringatan apa pun.
+                $kelas = Kelas::whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                     ->where('id_semester', $semester->id)
                     ->where('id_prodi', $mahasiswa->id_prodi)
                     ->first();
 
                 if (! $kelas) {
-                    $kelas = Kelas::with('prodi')
+                    // Kalau kelasnya ternyata ada di prodi lain, sebutkan — supaya admin tahu ini
+                    // soal ketidakcocokan prodi, bukan kelas yang belum dibuat.
+                    $prodiKelasLain = Kelas::with('prodi')
                         ->whereIn('id_kurikulum_matkul', $kurikulumMatkulList->pluck('id'))
                         ->where('id_semester', $semester->id)
-                        ->first();
-                }
+                        ->first()?->prodi?->nama;
 
-                if (! $kelas) {
-                    $errors[] = "Baris {$rowNumber}: Kelas dengan semester '{$semester->kode}' dan mata kuliah '{$kodeMatkul}' tidak ditemukan.";
+                    $errors[] = "Baris {$rowNumber}: Kelas dengan semester '{$semester->kode}' dan mata kuliah '{$kodeMatkul}' tidak ditemukan pada prodi mahasiswa."
+                        .($prodiKelasLain ? " Kelas mata kuliah ini adanya di prodi '{$prodiKelasLain}', dan mahasiswa tidak bisa didaftarkan ke kelas prodi lain." : '');
 
                     continue;
                 }
 
-                if ($allowedProdiIds !== null) {
-                    if (! in_array((int) $mahasiswa->id_prodi, $allowedProdiIds, true)) {
-                        $errors[] = "Baris {$rowNumber}: Anda tidak memiliki akses ke mahasiswa NIM '{$nim}' (prodi di luar scope).";
+                // Cukup cek prodi mahasiswa: kelas di atas sudah dipastikan berprodi sama.
+                if ($allowedProdiIds !== null && ! in_array((int) $mahasiswa->id_prodi, $allowedProdiIds, true)) {
+                    $errors[] = "Baris {$rowNumber}: Anda tidak memiliki akses ke mahasiswa NIM '{$nim}' (prodi di luar scope).";
 
-                        continue;
-                    }
-                    if (! in_array((int) $kelas->id_prodi, $allowedProdiIds, true)) {
-                        // Kelas yang cocok bisa saja berasal dari prodi lain (fallback query di
-                        // atas tidak memfilter prodi) — sebutkan prodi kelasnya supaya jelas kenapa
-                        // ditolak, bukan cuma "di luar scope".
-                        $prodiKelas = $kelas->prodi->nama ?? null;
-                        $errors[] = "Baris {$rowNumber}: Anda tidak memiliki akses ke kelas mata kuliah '{$kodeMatkul}' (prodi di luar scope)."
-                            .($prodiKelas ? " Kelas ini berasal dari prodi '{$prodiKelas}'." : '');
-
-                        continue;
-                    }
+                    continue;
                 }
 
                 $exists = Krs::where('id_mahasiswa', $mahasiswa->id)
