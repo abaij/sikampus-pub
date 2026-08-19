@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Admin\Sistem;
 
+use App\Mail\TestSmtpEmail;
 use App\Models\Setting;
+use Illuminate\Support\Facades\Mail;
 use Livewire\Component;
 
 class Pengaturan extends Component
@@ -27,6 +29,12 @@ class Pengaturan extends Component
      * saat simpan (artinya "jangan diubah"), bukan berarti "kosongkan password".
      */
     public bool $hasStoredPassword = false;
+
+    /**
+     * Alamat tujuan untuk tombol "Kirim Email Tes" — terpisah dari form SMTP di atas, tidak
+     * pernah disimpan ke database.
+     */
+    public string $testEmail = '';
 
     public function mount(): void
     {
@@ -81,6 +89,46 @@ class Pengaturan extends Component
         $this->password = '';
 
         session()->flash('status', 'Pengaturan SMTP berhasil disimpan.');
+    }
+
+    /**
+     * Kirim email tes memakai nilai yang SEDANG DIKETIK di form ini — bukan nilai yang sudah
+     * tersimpan di database — supaya admin bisa mengecek pengaturan sebelum menekan Simpan.
+     * Dikirim lewat mailer 'smtp_test' yang dibuat dadakan di sini (bukan mailer 'smtp' bawaan
+     * config/mail.php) supaya tidak menyentuh/menimpa config mailer default yang mungkin sedang
+     * dipakai bagian lain aplikasi di request yang sama.
+     *
+     * Sengaja sinkron (bukan dispatch job) supaya sukses/gagalnya — termasuk pesan error asli
+     * dari server SMTP tujuan, mis. "Authentication failed" — langsung diketahui saat itu juga.
+     */
+    public function sendTestEmail(): void
+    {
+        $validated = $this->validate(array_merge($this->rules(), [
+            'testEmail' => ['required', 'email'],
+        ]));
+
+        $password = $validated['password'] !== ''
+            ? $validated['password']
+            : (string) Setting::where('key', 'app_mail_password')->value('value');
+
+        config(['mail.mailers.smtp_test' => [
+            'transport' => 'smtp',
+            'scheme' => $validated['encryption'] ?: null,
+            'host' => $validated['host'],
+            'port' => (int) $validated['port'],
+            'username' => $validated['username'] ?: null,
+            'password' => $password ?: null,
+        ]]);
+
+        try {
+            Mail::mailer('smtp_test')
+                ->to($validated['testEmail'])
+                ->send(new TestSmtpEmail($validated['fromAddress'], $validated['fromName']));
+
+            session()->flash('status', "Email tes berhasil dikirim ke {$validated['testEmail']}.");
+        } catch (\Throwable $e) {
+            session()->flash('error', 'Gagal mengirim email tes: '.$e->getMessage());
+        }
     }
 
     public function render()

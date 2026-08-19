@@ -1,8 +1,10 @@
 <?php
 
 use App\Livewire\Admin\Sistem\Pengaturan;
+use App\Mail\TestSmtpEmail;
 use App\Models\Setting;
 use App\Providers\AppServiceProvider;
+use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
 
 it('redirects unauthenticated users to the admin login page', function () {
@@ -150,4 +152,78 @@ it('applies saved smtp settings to the runtime mail config on the next request',
     expect(config('mail.mailers.smtp.scheme'))->toBe('smtps');
     expect(config('mail.from.address'))->toBe('user@contoh.com');
     expect(config('mail.from.name'))->toBe('Kampus Contoh');
+});
+
+it('sends a test email using the values currently typed in the form, even if unsaved', function () {
+    // Ada baris tersimpan dengan host lama — tombol "Kirim Email Tes" harus tetap memakai nilai
+    // yang sedang diketik di form (belum ditekan Simpan), bukan nilai lama di database ini.
+    Setting::create(['key' => 'app_mail_host', 'value' => 'mail.lama.com']);
+    Mail::fake();
+    $admin = adminUser();
+
+    Livewire::actingAs($admin)
+        ->test(Pengaturan::class)
+        ->set('host', 'smtp.baru.com')
+        ->set('port', '587')
+        ->set('username', 'user@contoh.com')
+        ->set('password', 'sandi-baru')
+        ->set('fromAddress', 'noreply@contoh.com')
+        ->set('fromName', 'Kampus Contoh')
+        ->set('testEmail', 'tujuan@contoh.com')
+        ->call('sendTestEmail')
+        ->assertHasNoErrors();
+
+    expect(config('mail.mailers.smtp_test.host'))->toBe('smtp.baru.com');
+    expect(config('mail.mailers.smtp_test.password'))->toBe('sandi-baru');
+
+    Mail::assertSent(TestSmtpEmail::class, function (TestSmtpEmail $mail) {
+        return $mail->hasTo('tujuan@contoh.com')
+            && $mail->fromAddress === 'noreply@contoh.com'
+            && $mail->fromName === 'Kampus Contoh';
+    });
+});
+
+it('falls back to the stored password for the test email when the password field is blank', function () {
+    Setting::create(['key' => 'app_mail_password', 'value' => 'password-tersimpan']);
+    Mail::fake();
+    $admin = adminUser();
+
+    Livewire::actingAs($admin)
+        ->test(Pengaturan::class)
+        ->set('host', 'smtp.contoh.com')
+        ->set('port', '587')
+        ->set('username', 'user@contoh.com')
+        ->set('fromAddress', 'noreply@contoh.com')
+        ->set('fromName', 'Kampus Contoh')
+        ->set('testEmail', 'tujuan@contoh.com')
+        ->call('sendTestEmail')
+        ->assertHasNoErrors();
+
+    expect(config('mail.mailers.smtp_test.password'))->toBe('password-tersimpan');
+});
+
+it('requires a valid test email address', function () {
+    $admin = adminUser();
+
+    Livewire::actingAs($admin)
+        ->test(Pengaturan::class)
+        ->set('host', 'smtp.contoh.com')
+        ->set('port', '587')
+        ->set('username', 'user@contoh.com')
+        ->set('fromAddress', 'noreply@contoh.com')
+        ->set('fromName', 'Kampus Contoh')
+        ->set('testEmail', 'bukan-email')
+        ->call('sendTestEmail')
+        ->assertHasErrors(['testEmail']);
+});
+
+it('requires complete smtp settings before sending a test email', function () {
+    $admin = adminUser();
+
+    Livewire::actingAs($admin)
+        ->test(Pengaturan::class)
+        ->set('host', '')
+        ->set('testEmail', 'tujuan@contoh.com')
+        ->call('sendTestEmail')
+        ->assertHasErrors(['host']);
 });

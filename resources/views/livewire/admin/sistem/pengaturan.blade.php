@@ -23,6 +23,13 @@
         </div>
     @endif
 
+    @if (session('error'))
+        <div class="mb-4 flex gap-3 whitespace-pre-line rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+            <i data-lucide="circle-alert" class="h-5 w-5 shrink-0 text-red-600" aria-hidden="true"></i>
+            <span>{{ session('error') }}</span>
+        </div>
+    @endif
+
     <form wire:submit="save" class="space-y-6">
         <div class="rounded-2xl bg-white p-6 shadow-border">
             <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -77,6 +84,38 @@
             <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800">
                 <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i>
                 Simpan
+            </button>
+        </div>
+    </form>
+
+    <form wire:submit="sendTestEmail" class="mt-6 rounded-2xl bg-white p-6 shadow-border">
+        <div class="mb-4">
+            <h2 class="text-sm font-semibold text-neutral-900">Uji Koneksi SMTP</h2>
+            <p class="mt-1 text-sm text-neutral-500">
+                Kirim email tes memakai pengaturan di atas — termasuk perubahan yang belum disimpan — untuk memastikan koneksi SMTP berhasil.
+            </p>
+        </div>
+
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div class="flex-1">
+                <input
+                    type="email"
+                    wire:model="testEmail"
+                    placeholder="tujuan@contoh.com"
+                    class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('testEmail') ring-2 ring-red-500 @enderror shadow-border"
+                />
+                @error('testEmail') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+            </div>
+
+            <button
+                type="submit"
+                wire:loading.attr="disabled"
+                wire:target="sendTestEmail"
+                class="inline-flex shrink-0 items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                <i data-lucide="send" class="h-4 w-4" aria-hidden="true"></i>
+                <span wire:loading.remove wire:target="sendTestEmail">Kirim Email Tes</span>
+                <span wire:loading wire:target="sendTestEmail">Mengirim...</span>
             </button>
         </div>
     </form>
