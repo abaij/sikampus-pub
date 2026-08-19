@@ -553,9 +553,13 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('yudisium', [YudisiumController::class, 'store']);
         Route::get('yudisium/export-pdf', [YudisiumController::class, 'exportPdf']);
         Route::get('yudisium/export-excel', [YudisiumController::class, 'exportExcel']);
+        Route::get('yudisium/template/download', [YudisiumController::class, 'downloadTemplate']);
+        Route::post('yudisium/import', [YudisiumController::class, 'import']);
         Route::get('yudisium/{yudisium}', [YudisiumController::class, 'show']);
 
         Route::get('tugas-akhir', [TugasAkhirController::class, 'index']);
+        Route::get('tugas-akhir/template/download', [TugasAkhirController::class, 'downloadTemplate']);
+        Route::post('tugas-akhir/import', [TugasAkhirController::class, 'import']);
         Route::patch('tugas-akhir/{tugasAkhir}/status', [TugasAkhirController::class, 'updateStatus']);
         Route::post('tugas-akhir/{tugasAkhir}/pembimbing', [TugasAkhirController::class, 'storePembimbing']);
         Route::put('tugas-akhir/{tugasAkhir}/pembimbing/{pembimbing}', [TugasAkhirController::class, 'updatePembimbing']);

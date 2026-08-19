@@ -14,6 +14,8 @@ $modules = [
     'nilai' => ['import' => 'admin.akademik.nilai.import', 'template' => 'admin.akademik.nilai.template'],
     'krs' => ['import' => 'admin.akademik.krs.import', 'template' => 'admin.akademik.krs.template'],
     'matkul' => ['import' => 'admin.akademik.matkul.import', 'template' => 'admin.akademik.matkul.template'],
+    'yudisium' => ['import' => 'admin.akademik.yudisium.import', 'template' => 'admin.akademik.yudisium.template'],
+    'tugas-akhir' => ['import' => 'admin.akademik.tugas-akhir.import', 'template' => 'admin.akademik.tugas-akhir.template'],
 ];
 
 foreach ($modules as $name => $routes) {

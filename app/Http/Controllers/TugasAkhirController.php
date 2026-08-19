@@ -19,8 +19,15 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TugasAkhirController extends Controller
 {
@@ -91,6 +98,215 @@ class TugasAkhirController extends Controller
         $data = $query->paginate($perPage);
 
         return response()->json($data);
+    }
+
+    public function downloadTemplate(): StreamedResponse
+    {
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'NIM*',
+            'Kode Semester*',
+            'Judul*',
+            'Status (Opsional, default: submitted)',
+            'Judul (English) (Opsional)',
+            'Topik (Opsional)',
+            'Topik (English) (Opsional)',
+            'Deskripsi (Opsional)',
+            'Is Proposal (true/false, Opsional, default: true)',
+        ];
+        $sheet->fromArray([$headers], null, 'A1');
+
+        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as $col) {
+            $sheet->getColumnDimension($col)->setWidth(26);
+        }
+
+        $sheet->getStyle('A1:I1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4472C4']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        $exampleRow = [
+            '2020001',
+            '20251',
+            'Sistem Informasi Akademik Berbasis Web',
+            'approved',
+            'Web-Based Academic Information System',
+            'Rekayasa Perangkat Lunak',
+            'Software Engineering',
+            '',
+            'false',
+        ];
+        $sheet->fromArray([$exampleRow], null, 'A2');
+
+        $filename = 'template_import_tugas_akhir_'.date('YmdHis').'.xlsx';
+
+        return new StreamedResponse(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment;filename="'.$filename.'"',
+            'Cache-Control' => 'max-age=0',
+        ]);
+    }
+
+    /**
+     * Import massal data tugas akhir dari Excel. Tidak ada endpoint store() admin-side yang bisa
+     * dicerminkan langsung (mahasiswa mengajukan sendiri lewat storePengajuanMahasiswa, terikat
+     * KRS TA semester aktif) — import ini dipakai untuk mengisi data historis/hasil migrasi, jadi
+     * SENGAJA tidak mensyaratkan KRS Tugas Akhir yang disetujui seperti storePengajuanMahasiswa.
+     * Validasi lain yang tetap disamakan: mahasiswa & semester wajib ada, scope prodi admin
+     * dihormati, dan satu mahasiswa hanya boleh punya satu baris tugas_akhir per semester (modul
+     * ini tidak mendukung ubah/hapus lewat import, jadi duplikat dilaporkan sebagai error).
+     */
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+        ]);
+
+        $spreadsheet = IOFactory::load($request->file('file')->getRealPath());
+        $rows = $spreadsheet->getActiveSheet()->toArray();
+
+        if (count($rows) < 2) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File Excel kosong atau tidak valid.',
+            ], 400);
+        }
+
+        array_shift($rows);
+
+        $errors = [];
+        $successCount = 0;
+
+        $user = $request->user();
+        $allowedProdiIds = ($user && $user->hasScopeRestriction()) ? $user->getAllowedProdiIds() : null;
+        $actor = $user ? (trim((string) ($user->name ?? '')) !== '' ? trim((string) $user->name) : (string) ($user->email ?? '')) : 'system';
+
+        DB::beginTransaction();
+        try {
+            foreach ($rows as $rowIndex => $row) {
+                $rowNumber = $rowIndex + 2;
+
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+
+                $nim = trim((string) ($row[0] ?? ''));
+                $kodeSemester = trim((string) ($row[1] ?? ''));
+                $judul = trim((string) ($row[2] ?? ''));
+                $statusRaw = trim((string) ($row[3] ?? ''));
+                $isProposalRaw = trim(strtolower((string) ($row[8] ?? '')));
+
+                if ($nim === '') {
+                    $errors[] = "Baris {$rowNumber}: NIM wajib diisi.";
+
+                    continue;
+                }
+
+                if ($kodeSemester === '') {
+                    $errors[] = "Baris {$rowNumber}: Kode Semester wajib diisi.";
+
+                    continue;
+                }
+
+                if ($judul === '') {
+                    $errors[] = "Baris {$rowNumber}: Judul wajib diisi.";
+
+                    continue;
+                }
+
+                $mahasiswa = Mahasiswa::where('nim', $nim)->first();
+                if (! $mahasiswa) {
+                    $errors[] = "Baris {$rowNumber}: Mahasiswa dengan NIM '{$nim}' tidak ditemukan.";
+
+                    continue;
+                }
+
+                if ($allowedProdiIds !== null && ! in_array((int) $mahasiswa->id_prodi, $allowedProdiIds, true)) {
+                    $errors[] = "Baris {$rowNumber}: Anda tidak memiliki akses ke mahasiswa NIM '{$nim}' (prodi di luar scope).";
+
+                    continue;
+                }
+
+                $semester = Semester::where('kode', $kodeSemester)->first();
+                if (! $semester) {
+                    $errors[] = "Baris {$rowNumber}: Semester dengan kode '{$kodeSemester}' tidak ditemukan.";
+
+                    continue;
+                }
+
+                $status = $statusRaw === '' ? 'submitted' : $statusRaw;
+                if (! in_array($status, self::STATUSES, true)) {
+                    $errors[] = "Baris {$rowNumber}: Status '{$statusRaw}' tidak valid. Gunakan salah satu: ".implode(', ', self::STATUSES).'.';
+
+                    continue;
+                }
+
+                $duplikat = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)
+                    ->where('id_semester', $semester->id)
+                    ->exists();
+                if ($duplikat) {
+                    $errors[] = "Baris {$rowNumber}: Mahasiswa NIM '{$nim}' sudah memiliki data tugas akhir untuk semester '{$kodeSemester}'.";
+
+                    continue;
+                }
+
+                $isProposal = $isProposalRaw === '' ? true : filter_var($isProposalRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($isProposal === null) {
+                    $isProposal = true;
+                }
+
+                TugasAkhir::create([
+                    'id_mahasiswa' => $mahasiswa->id,
+                    'id_semester' => $semester->id,
+                    'judul' => $judul,
+                    'judul_en' => self::nullIfBlank($row[4] ?? null),
+                    'topik' => self::nullIfBlank($row[5] ?? null),
+                    'topik_en' => self::nullIfBlank($row[6] ?? null),
+                    'deskripsi' => self::nullIfBlank($row[7] ?? null),
+                    'is_proposal' => $isProposal,
+                    'status' => $status,
+                    'created_by' => $actor,
+                    'updated_by' => $actor,
+                ]);
+                $successCount++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Import selesai. Berhasil: {$successCount}, Error: ".count($errors),
+                'success_count' => $successCount,
+                'error_count' => count($errors),
+                'errors' => $errors,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Import tugas akhir gagal', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat mengimpor data: '.$e->getMessage(),
+                'errors' => $errors,
+            ], 500);
+        }
+    }
+
+    private static function nullIfBlank(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
     }
 
     public function show(Request $request, TugasAkhir $tugasAkhir): JsonResponse

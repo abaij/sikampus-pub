@@ -13,6 +13,7 @@ use App\Http\Controllers\NegaraController;
 use App\Http\Controllers\NilaiController;
 use App\Http\Controllers\ProvinsiController;
 use App\Http\Controllers\SurveyController;
+use App\Http\Controllers\TugasAkhirController;
 use App\Http\Controllers\Web\AdminWebLoginController;
 use App\Http\Controllers\Web\DosenBimbinganExportController;
 use App\Http\Controllers\Web\DosenExportController;
@@ -25,6 +26,7 @@ use App\Http\Controllers\Web\NilaiExportController;
 use App\Http\Controllers\Web\SuperadminEnvConfigController;
 use App\Http\Controllers\Web\SuperadminTestUploadController;
 use App\Http\Controllers\Web\SuperadminWebLoginController;
+use App\Http\Controllers\YudisiumController;
 use App\Livewire\Admin\AturanAksesKeuangan\Form as AturanAksesKeuanganForm;
 use App\Livewire\Admin\AturanAksesKeuangan\Index as AturanAksesKeuanganIndex;
 use App\Livewire\Admin\Dashboard as AdminDashboard;
@@ -145,6 +147,7 @@ use App\Livewire\Admin\Tagihan\Form as TagihanForm;
 use App\Livewire\Admin\Tagihan\Generate as TagihanGenerate;
 use App\Livewire\Admin\Tagihan\Index as TagihanIndex;
 use App\Livewire\Admin\Tagihan\Show as TagihanShow;
+use App\Livewire\Admin\TugasAkhir\Import as TugasAkhirImport;
 use App\Livewire\Admin\TugasAkhir\Index as TugasAkhirIndex;
 use App\Livewire\Admin\TugasAkhir\Show as TugasAkhirShow;
 use App\Livewire\Admin\TugasAkhir\UjianSidangShow;
@@ -152,6 +155,7 @@ use App\Livewire\Admin\Wisuda\Form as WisudaForm;
 use App\Livewire\Admin\Wisuda\Index as WisudaIndex;
 use App\Livewire\Admin\Wisuda\Show as WisudaShow;
 use App\Livewire\Admin\Yudisium\Form as YudisiumForm;
+use App\Livewire\Admin\Yudisium\Import as YudisiumImport;
 use App\Livewire\Admin\Yudisium\Index as YudisiumIndex;
 use App\Livewire\Admin\Yudisium\Show as YudisiumShow;
 use App\Livewire\Auth\Aktivasi;
@@ -465,12 +469,20 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::livewire('akademik/perkuliahan/nilai/{id}', PerkuliahanNilai::class)->name('akademik.perkuliahan.nilai');
         Route::livewire('akademik/perkuliahan/{id}', PerkuliahanShow::class)->name('akademik.perkuliahan.show');
 
+        // Rute literal (template/import) harus didaftarkan sebelum 'akademik/tugas-akhir/{id}'
+        // supaya tidak tertangkap sebagai id (lihat catatan di skill siak-livewire-module).
         Route::livewire('akademik/tugas-akhir', TugasAkhirIndex::class)->name('akademik.tugas-akhir');
+        Route::get('akademik/tugas-akhir/template/download', [TugasAkhirController::class, 'downloadTemplate'])->name('akademik.tugas-akhir.template');
+        Route::livewire('akademik/tugas-akhir/import', TugasAkhirImport::class)->name('akademik.tugas-akhir.import');
         Route::livewire('akademik/tugas-akhir/{id}/ujian-sidang/{sidangId}', UjianSidangShow::class)->name('akademik.tugas-akhir.ujian-sidang');
         Route::livewire('akademik/tugas-akhir/{id}', TugasAkhirShow::class)->name('akademik.tugas-akhir.show');
 
+        // Rute literal (template/import) harus didaftarkan sebelum 'akademik/yudisium/{id}' supaya
+        // tidak tertangkap sebagai id (lihat catatan di skill siak-livewire-module).
         Route::livewire('akademik/yudisium', YudisiumIndex::class)->name('akademik.yudisium');
         Route::livewire('akademik/yudisium/create', YudisiumForm::class)->name('akademik.yudisium.create');
+        Route::get('akademik/yudisium/template/download', [YudisiumController::class, 'downloadTemplate'])->name('akademik.yudisium.template');
+        Route::livewire('akademik/yudisium/import', YudisiumImport::class)->name('akademik.yudisium.import');
         Route::livewire('akademik/yudisium/{id}', YudisiumShow::class)->name('akademik.yudisium.show');
 
         Route::livewire('akademik/wisuda', WisudaIndex::class)->name('akademik.wisuda');

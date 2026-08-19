@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Yudisium;
-use App\Models\Mahasiswa;
 use App\Models\JenisKeluar;
+use App\Models\Mahasiswa;
+use App\Models\Yudisium;
+use Carbon\Carbon;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -32,7 +36,7 @@ class YudisiumController extends Controller
         $query = Yudisium::with([
             'mahasiswa.prodi',
             'mahasiswa.semester_masuk',
-            'jenis_keluar'
+            'jenis_keluar',
         ]);
 
         $user = $request->user();
@@ -42,7 +46,7 @@ class YudisiumController extends Controller
                 $query->whereHas('mahasiswa', function ($q) use ($allowedProdiIds) {
                     $q->whereIn('id_prodi', $allowedProdiIds);
                 });
-                if ($prodiId !== null && !in_array($prodiId, $allowedProdiIds, true)) {
+                if ($prodiId !== null && ! in_array($prodiId, $allowedProdiIds, true)) {
                     $prodiId = null;
                 }
             }
@@ -52,12 +56,12 @@ class YudisiumController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->whereHas('mahasiswa', function ($mahasiswaQuery) use ($search) {
                     $mahasiswaQuery->where('nama', 'like', "%{$search}%")
-                                  ->orWhere('nim', 'like', "%{$search}%")
-                                  ->orWhere('email', 'like', "%{$search}%");
+                        ->orWhere('nim', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
                 })
-                ->orWhere('no_ijazah', 'like', "%{$search}%")
-                ->orWhere('no_sk_yudisium', 'like', "%{$search}%")
-                ->orWhere('judul_skripsi', 'like', "%{$search}%");
+                    ->orWhere('no_ijazah', 'like', "%{$search}%")
+                    ->orWhere('no_sk_yudisium', 'like', "%{$search}%")
+                    ->orWhere('judul_skripsi', 'like', "%{$search}%");
             });
         }
 
@@ -226,13 +230,13 @@ class YudisiumController extends Controller
             'mahasiswa.semester_masuk',
             'mahasiswa.status_akademik',
             'mahasiswa.grup_mahasiswa',
-            'jenis_keluar'
+            'jenis_keluar',
         ]);
 
         $user = $request->user();
         if ($user && $user->hasScopeRestriction()) {
             $allowedProdiIds = $user->getAllowedProdiIds();
-            if ($allowedProdiIds !== null && $yudisium->mahasiswa && !in_array((int) $yudisium->mahasiswa->id_prodi, $allowedProdiIds, true)) {
+            if ($allowedProdiIds !== null && $yudisium->mahasiswa && ! in_array((int) $yudisium->mahasiswa->id_prodi, $allowedProdiIds, true)) {
                 abort(403, 'Anda tidak memiliki akses ke data yudisium ini.');
             }
         }
@@ -271,7 +275,7 @@ class YudisiumController extends Controller
             $mahasiswa = Mahasiswa::find($validated['id_mahasiswa']);
             if ($mahasiswa) {
                 $allowedProdiIds = $user->getAllowedProdiIds();
-                if ($allowedProdiIds !== null && !in_array((int) $mahasiswa->id_prodi, $allowedProdiIds, true)) {
+                if ($allowedProdiIds !== null && ! in_array((int) $mahasiswa->id_prodi, $allowedProdiIds, true)) {
                     abort(403, 'Anda tidak memiliki akses ke mahasiswa prodi ini.');
                 }
             }
@@ -287,7 +291,7 @@ class YudisiumController extends Controller
                 'mahasiswa.semester_masuk',
                 'mahasiswa.status_akademik',
                 'mahasiswa.grup_mahasiswa',
-                'jenis_keluar'
+                'jenis_keluar',
             ]);
 
             DB::commit();
@@ -299,11 +303,250 @@ class YudisiumController extends Controller
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal membuat data yudisium: ' . $e->getMessage(),
+                'message' => 'Gagal membuat data yudisium: '.$e->getMessage(),
             ], 500);
         }
     }
-}
 
+    public function downloadTemplate(): StreamedResponse
+    {
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+
+        $headers = [
+            'NIM*',
+            'Jenis Keluar*',
+            'Tanggal Keluar (Opsional)',
+            'No. Ijazah (Opsional)',
+            'No. SK Yudisium (Opsional)',
+            'Tanggal SK Yudisium (Opsional)',
+            'IPK (Opsional)',
+            'Judul Skripsi/TA (Opsional)',
+            'Keterangan (Opsional)',
+        ];
+        $sheet->fromArray([$headers], null, 'A1');
+
+        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as $col) {
+            $sheet->getColumnDimension($col)->setWidth(24);
+        }
+
+        $sheet->getStyle('A1:I1')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4472C4']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        $exampleRow = [
+            '2020001',
+            'Lulus',
+            '2026-05-04',
+            '009/IJZ/UNMI/V/2026',
+            '0909/UNMI/VI/2026',
+            '2026-04-15',
+            '3.85',
+            'Sistem Informasi Akademik Berbasis Web',
+            '',
+        ];
+        $sheet->fromArray([$exampleRow], null, 'A2');
+
+        $filename = 'template_import_yudisium_'.date('YmdHis').'.xlsx';
+
+        return new StreamedResponse(function () use ($spreadsheet) {
+            $writer = new Xlsx($spreadsheet);
+            $writer->save('php://output');
+        }, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment;filename="'.$filename.'"',
+            'Cache-Control' => 'max-age=0',
+        ]);
+    }
+
+    /**
+     * Import massal data yudisium dari Excel. Setiap baris memvalidasi ulang aturan yang sama
+     * dengan store(): mahasiswa & jenis keluar wajib ada, kombinasi keduanya unik per mahasiswa,
+     * dan scope prodi admin dihormati. Modul yudisium create-only (tidak ada update/destroy),
+     * jadi baris duplikat dilaporkan sebagai error, bukan diperbarui.
+     */
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+        ]);
+
+        $spreadsheet = IOFactory::load($request->file('file')->getRealPath());
+        $rows = $spreadsheet->getActiveSheet()->toArray();
+
+        if (count($rows) < 2) {
+            return response()->json([
+                'success' => false,
+                'message' => 'File Excel kosong atau tidak valid.',
+            ], 400);
+        }
+
+        array_shift($rows);
+
+        $errors = [];
+        $successCount = 0;
+
+        $user = $request->user();
+        $allowedProdiIds = ($user && $user->hasScopeRestriction()) ? $user->getAllowedProdiIds() : null;
+
+        DB::beginTransaction();
+        try {
+            foreach ($rows as $rowIndex => $row) {
+                $rowNumber = $rowIndex + 2;
+
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+
+                $nim = trim((string) ($row[0] ?? ''));
+                $namaJenisKeluar = trim((string) ($row[1] ?? ''));
+                $ipkRaw = trim((string) ($row[6] ?? ''));
+
+                if ($nim === '') {
+                    $errors[] = "Baris {$rowNumber}: NIM wajib diisi.";
+
+                    continue;
+                }
+
+                if ($namaJenisKeluar === '') {
+                    $errors[] = "Baris {$rowNumber}: Jenis Keluar wajib diisi.";
+
+                    continue;
+                }
+
+                $mahasiswa = Mahasiswa::where('nim', $nim)->first();
+                if (! $mahasiswa) {
+                    $errors[] = "Baris {$rowNumber}: Mahasiswa dengan NIM '{$nim}' tidak ditemukan.";
+
+                    continue;
+                }
+
+                if ($allowedProdiIds !== null && ! in_array((int) $mahasiswa->id_prodi, $allowedProdiIds, true)) {
+                    $errors[] = "Baris {$rowNumber}: Anda tidak memiliki akses ke mahasiswa NIM '{$nim}' (prodi di luar scope).";
+
+                    continue;
+                }
+
+                $jenisKeluar = JenisKeluar::where('nama', $namaJenisKeluar)->first();
+                if (! $jenisKeluar) {
+                    $errors[] = "Baris {$rowNumber}: Jenis Keluar '{$namaJenisKeluar}' tidak ditemukan.";
+
+                    continue;
+                }
+
+                $duplikat = Yudisium::withTrashed()
+                    ->where('id_mahasiswa', $mahasiswa->id)
+                    ->where('id_jenis_keluar', $jenisKeluar->id)
+                    ->exists();
+                if ($duplikat) {
+                    $errors[] = "Baris {$rowNumber}: Mahasiswa NIM '{$nim}' sudah memiliki data yudisium dengan jenis keluar '{$namaJenisKeluar}'.";
+
+                    continue;
+                }
+
+                $ipk = null;
+                if ($ipkRaw !== '') {
+                    $ipkValue = filter_var($ipkRaw, FILTER_VALIDATE_FLOAT);
+                    if ($ipkValue === false) {
+                        $errors[] = "Baris {$rowNumber}: IPK '{$ipkRaw}' tidak valid.";
+
+                        continue;
+                    }
+                    if ($ipkValue < 0 || $ipkValue > 4.0) {
+                        $errors[] = "Baris {$rowNumber}: IPK '{$ipkRaw}' harus di antara 0 dan 4.00.";
+
+                        continue;
+                    }
+                    $ipk = $ipkValue;
+                }
+
+                Yudisium::create([
+                    'id_mahasiswa' => $mahasiswa->id,
+                    'id_jenis_keluar' => $jenisKeluar->id,
+                    'tgl_keluar' => self::normalizeImportDate($row[2] ?? null),
+                    'no_ijazah' => self::nullIfBlank($row[3] ?? null),
+                    'no_sk_yudisium' => self::nullIfBlank($row[4] ?? null),
+                    'tanggal_sk_yudisium' => self::normalizeImportDate($row[5] ?? null),
+                    'ipk' => $ipk,
+                    'judul_skripsi' => self::nullIfBlank($row[7] ?? null),
+                    'keterangan' => self::nullIfBlank($row[8] ?? null),
+                ]);
+                $successCount++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => "Import selesai. Berhasil: {$successCount}, Error: ".count($errors),
+                'success_count' => $successCount,
+                'error_count' => count($errors),
+                'errors' => $errors,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Import yudisium gagal', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat mengimpor data: '.$e->getMessage(),
+                'errors' => $errors,
+            ], 500);
+        }
+    }
+
+    private static function nullIfBlank(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    /**
+     * Terima tanggal dari Excel baik sebagai string, objek tanggal, maupun serial number Excel.
+     * Sama dengan pola normalizeImportDate di MahasiswaController.
+     */
+    private static function normalizeImportDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+        if (is_numeric($value)) {
+            $n = (float) $value;
+            if ($n > 200 && $n < 120_000) {
+                try {
+                    return ExcelDate::excelToDateTimeObject($n)->format('Y-m-d');
+                } catch (\Throwable) {
+                    return null;
+                }
+            }
+
+            return null;
+        }
+        if (is_string($value)) {
+            $t = trim($value);
+            if ($t === '') {
+                return null;
+            }
+            try {
+                return Carbon::parse($t)->format('Y-m-d');
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+}

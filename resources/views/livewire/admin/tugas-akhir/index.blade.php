@@ -32,6 +32,23 @@
     ]])
 @endsection
 
+@section('page_actions')
+    <a
+        href="{{ route('admin.akademik.tugas-akhir.template') }}"
+        class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
+    >
+        <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+        Download Template
+    </a>
+    <a
+        href="{{ route('admin.akademik.tugas-akhir.import') }}"
+        class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
+    >
+        <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
+        Import Tugas Akhir
+    </a>
+@endsection
+
 <div>
     <div class="rounded-2xl bg-white shadow-border">
         <div class="space-y-4 border-b border-neutral-200 p-4">
