@@ -172,3 +172,22 @@ it('generates an xlsx export and an inline pdf for a mahasiswa nilai', function 
     $pdfResponse->assertHeader('Content-Type', 'application/pdf');
     expect($pdfResponse->headers->get('Content-Disposition'))->toContain('inline');
 });
+
+it('lists mata kuliah sorted by name on the detail nilai page', function () {
+    $admin = adminUser();
+    $prodi = Prodi::factory()->create();
+    $mahasiswa = Mahasiswa::factory()->create(['id_prodi' => $prodi->id]);
+
+    // Dibuat sengaja tidak berurutan abjad supaya urutan created_at berbeda dari urutan nama.
+    foreach (['Zoologi Dasar', 'Anatomi Manusia', 'Biologi Sel'] as $nama) {
+        $matkul = Matkul::factory()->create(['nama' => $nama, 'sks' => 2]);
+        $kelas = Kelas::factory()->create(['id_prodi' => $prodi->id]);
+        $kelas->kurikulumMatkul()->update(['id_matkul' => $matkul->id]);
+        Krs::factory()->create(['id_mahasiswa' => $mahasiswa->id, 'id_kelas' => $kelas->id]);
+    }
+
+    $this->actingAs($admin)
+        ->get(route('admin.akademik.nilai.show', $mahasiswa->id))
+        ->assertOk()
+        ->assertSeeInOrder(['Anatomi Manusia', 'Biologi Sel', 'Zoologi Dasar']);
+});

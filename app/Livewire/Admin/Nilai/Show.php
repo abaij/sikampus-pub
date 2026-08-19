@@ -8,6 +8,7 @@ use App\Models\Nilai;
 use App\Models\NilaiRevisi;
 use App\Models\Semester;
 use App\Services\SemesterService;
+use App\Services\UrutanMatkulService;
 use App\Support\PanelAccess;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -97,7 +98,9 @@ class Show extends Component
             });
         }
 
-        $krsList = $query->orderByDesc('created_at')->get();
+        // Diurutkan berdasarkan nama mata kuliah; created_at tetap jadi tie-breaker karena
+        // sortBy di PHP 8 stabil.
+        $krsList = UrutanMatkulService::urutkanKrs($query->orderByDesc('created_at')->get());
 
         $krsIds = $krsList->pluck('id')->toArray();
         $nilaiMap = empty($krsIds)

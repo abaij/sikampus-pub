@@ -15,6 +15,7 @@ use App\Models\Notifikasi;
 use App\Models\Perkuliahan;
 use App\Models\Semester;
 use App\Services\KeuanganAksesMahasiswaService;
+use App\Services\UrutanMatkulService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\JsonResponse;
@@ -824,7 +825,7 @@ class KrsController extends Controller
             });
         }
 
-        $krsList = $krsQuery->orderBy('created_at', 'desc')->get();
+        $krsList = UrutanMatkulService::urutkanKrs($krsQuery->orderBy('created_at', 'desc')->get());
 
         // Hitung total SKS
         $totalSksDiajukan = 0;
@@ -918,6 +919,8 @@ class KrsController extends Controller
             ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc')
             ->get();
+
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
 
         $krsBySemester = [];
 
@@ -1092,7 +1095,7 @@ class KrsController extends Controller
             });
         }
 
-        $krsList = $query->orderBy('created_at', 'desc')->get();
+        $krsList = UrutanMatkulService::urutkanKrs($query->orderBy('created_at', 'desc')->get());
 
         $krsBySemester = [];
         foreach ($krsList as $krs) {
@@ -1981,6 +1984,8 @@ class KrsController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
+
         // Kelompokkan KRS berdasarkan semester
         $krsBySemester = [];
 
@@ -2074,6 +2079,8 @@ class KrsController extends Controller
             ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc')
             ->get();
+
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
 
         $krsBySemester = [];
         foreach ($krsList as $krs) {
@@ -2750,7 +2757,7 @@ class KrsController extends Controller
             });
         }
 
-        $krsList = $krsQuery->orderBy('created_at', 'desc')->get();
+        $krsList = UrutanMatkulService::urutkanKrs($krsQuery->orderBy('created_at', 'desc')->get());
 
         $result = $krsList->map(function ($krs) {
             $matkul = $krs->kelas->kurikulumMatkul->matkul ?? null;

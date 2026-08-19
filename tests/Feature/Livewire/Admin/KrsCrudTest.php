@@ -153,3 +153,22 @@ it('admin dengan scope prodi tidak bisa mencetak KRS mahasiswa di luar prodinya'
         ->get(route('admin.akademik.krs.cetak', $mahasiswaB->id))
         ->assertForbidden();
 });
+
+it('lists mata kuliah sorted by name on the detail krs page', function () {
+    $admin = adminUser();
+    $prodi = Prodi::factory()->create();
+    $mahasiswa = Mahasiswa::factory()->create(['id_prodi' => $prodi->id]);
+
+    // Dibuat sengaja tidak berurutan abjad supaya urutan created_at berbeda dari urutan nama.
+    foreach (['Zoologi Dasar', 'Anatomi Manusia', 'Biologi Sel'] as $nama) {
+        $matkul = Matkul::factory()->create(['nama' => $nama, 'sks' => 2]);
+        $kelas = Kelas::factory()->create(['id_prodi' => $prodi->id]);
+        $kelas->kurikulumMatkul()->update(['id_matkul' => $matkul->id]);
+        Krs::factory()->create(['id_mahasiswa' => $mahasiswa->id, 'id_kelas' => $kelas->id]);
+    }
+
+    $this->actingAs($admin)
+        ->get(route('admin.akademik.krs.show', $mahasiswa->id))
+        ->assertOk()
+        ->assertSeeInOrder(['Anatomi Manusia', 'Biologi Sel', 'Zoologi Dasar']);
+});

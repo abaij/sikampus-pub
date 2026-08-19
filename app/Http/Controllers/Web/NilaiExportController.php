@@ -9,6 +9,7 @@ use App\Models\Nilai;
 use App\Models\Semester;
 use App\Models\Setting;
 use App\Services\TranskripPdfGenerator;
+use App\Services\UrutanMatkulService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
@@ -67,7 +68,9 @@ class NilaiExportController extends Controller
             });
         }
 
-        $krsList = $query->orderByDesc('created_at')->get();
+        // Diurutkan berdasarkan nama mata kuliah; created_at tetap jadi tie-breaker karena
+        // sortBy di PHP 8 stabil.
+        $krsList = UrutanMatkulService::urutkanKrs($query->orderByDesc('created_at')->get());
 
         $krsIds = $krsList->pluck('id')->toArray();
         $nilaiMap = empty($krsIds)

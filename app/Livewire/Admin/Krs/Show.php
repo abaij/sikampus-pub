@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Krs;
 use App\Models\Krs;
 use App\Models\Mahasiswa;
 use App\Models\Semester;
+use App\Services\UrutanMatkulService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -94,7 +95,9 @@ class Show extends Component
             });
         }
 
-        return $query->orderByDesc('created_at')->get();
+        // Diurutkan berdasarkan nama mata kuliah; created_at tetap jadi tie-breaker karena
+        // sortBy di PHP 8 stabil.
+        return UrutanMatkulService::urutkanKrs($query->orderByDesc('created_at')->get());
     }
 
     #[Computed]

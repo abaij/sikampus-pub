@@ -10,6 +10,7 @@ use App\Models\Nilai;
 use App\Models\Semester;
 use App\Models\Setting;
 use App\Services\SemesterService;
+use App\Services\UrutanMatkulService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
@@ -67,6 +68,8 @@ class KrsCetakController extends Controller
             ->whereNull('deleted_at')
             ->whereHas('kelas', fn ($q) => $q->where('id_semester', $semester->id))
             ->get();
+
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
 
         $jadwalByKelas = Jadwal::with('ruangan')
             ->whereIn('id_kelas', $krsList->pluck('id_kelas'))

@@ -20,6 +20,7 @@ use App\Models\NilaiRevisi;
 use App\Models\Notifikasi;
 use App\Models\Setting;
 use App\Services\SemesterService;
+use App\Services\UrutanMatkulService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -1604,7 +1605,7 @@ class NilaiController extends Controller
             });
         }
 
-        $krsList = $query->orderBy('created_at', 'desc')->get();
+        $krsList = UrutanMatkulService::urutkanKrs($query->orderBy('created_at', 'desc')->get());
 
         // Ambil nilai untuk setiap KRS
         $krsIds = $krsList->pluck('id')->toArray();
@@ -1705,6 +1706,8 @@ class NilaiController extends Controller
         ->whereNull('deleted_at')
         ->orderBy('created_at', 'desc')
         ->get();
+
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
 
         // Ambil nilai untuk setiap KRS
         $krsIds = $krsList->pluck('id')->toArray();
@@ -1846,6 +1849,8 @@ class NilaiController extends Controller
         ->whereNull('deleted_at')
         ->orderBy('created_at', 'desc')
         ->get();
+
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
 
         $krsIds = $krsList->pluck('id')->toArray();
         $nilaiMap = [];
@@ -2579,6 +2584,8 @@ class NilaiController extends Controller
         ->orderBy('created_at', 'asc')
         ->get();
 
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
+
         // Ambil nilai untuk setiap KRS
         $krsIds = $krsList->pluck('id')->toArray();
         $nilaiMap = [];
@@ -2728,6 +2735,8 @@ class NilaiController extends Controller
         ->orderBy('created_at', 'asc')
         ->get();
 
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
+
         // Ambil nilai untuk setiap KRS
         $krsIds = $krsList->pluck('id')->toArray();
         $nilaiMap = [];
@@ -2816,6 +2825,8 @@ class NilaiController extends Controller
             ->orderBy('created_at', 'asc')
             ->get();
 
+        $krsList = UrutanMatkulService::urutkanKrs($krsList);
+
         $krsIds = $krsList->pluck('id')->toArray();
         $nilaiMap = [];
         if (! empty($krsIds)) {
@@ -2878,13 +2889,15 @@ class NilaiController extends Controller
             ];
         }
 
+        // Di dalam satu semester, urut berdasarkan nama mata kuliah (bukan kodenya) supaya
+        // konsisten dengan daftar nilai/KRS di seluruh aplikasi.
         usort($mataKuliahList, function ($a, $b) {
             $cmp = ($a['semester']['id'] ?? 0) <=> ($b['semester']['id'] ?? 0);
             if ($cmp !== 0) {
                 return $cmp;
             }
 
-            return strcmp($a['matkul']['kode'] ?? '', $b['matkul']['kode'] ?? '');
+            return strnatcasecmp($a['matkul']['nama'] ?? '', $b['matkul']['nama'] ?? '');
         });
 
         $ipk = null;
@@ -3018,7 +3031,7 @@ class NilaiController extends Controller
             });
         }
 
-        $krsList = $query->orderBy('created_at', 'desc')->get();
+        $krsList = UrutanMatkulService::urutkanKrs($query->orderBy('created_at', 'desc')->get());
 
         // Ambil nilai untuk setiap KRS
         $krsIds = $krsList->pluck('id')->toArray();
@@ -3203,7 +3216,7 @@ class NilaiController extends Controller
             });
         }
 
-        $krsList = $query->orderBy('created_at', 'desc')->get();
+        $krsList = UrutanMatkulService::urutkanKrs($query->orderBy('created_at', 'desc')->get());
 
         // Ambil informasi semester yang dipilih (jika ada filter)
         $semesterFilter = null;
