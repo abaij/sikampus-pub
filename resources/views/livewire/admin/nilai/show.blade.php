@@ -121,15 +121,21 @@
                     <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
                     Export
                 </a>
-                <a
-                    href="{{ route('admin.akademik.nilai.cetak', $mahasiswaId) }}{{ $filterSemester !== '' ? '?id_semester='.$filterSemester : '' }}"
-                    target="_blank"
-                    rel="noopener"
+{{-- Cetak menawarkan dua bentuk dokumen yang isinya memang berbeda, jadi pilihannya
+                     dimunculkan dulu lewat modal, bukan langsung mencetak.
+
+                     Pakai <dialog> native + vanilla JS (pola yang sama dengan modal konfirmasi
+                     logout di layouts/web.blade.php), BUKAN dropdown Alpine: x-show terbukti tidak
+                     pernah mengubah display di halaman ini — elemennya tetap block walau state-nya
+                     false — sementara @click-nya jalan normal, jadi menunya akan selalu terlihat. --}}
+                <button
+                    type="button"
+                    onclick="document.getElementById('pilih-format-cetak-modal').showModal()"
                     class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 shadow-border"
                 >
                     <i data-lucide="printer" class="h-4 w-4" aria-hidden="true"></i>
                     Cetak
-                </a>
+                </button>
             </div>
         </div>
 
@@ -230,4 +236,60 @@
             </div>
         </div>
     @endif
+
+    {{-- Posisi lewat fixed+translate (bukan margin:auto bawaan <dialog>) karena preflight Tailwind
+         me-reset margin semua elemen termasuk dialog, yang membatalkan centering otomatis browser. --}}
+    <dialog id="pilih-format-cetak-modal" class="fixed top-1/2 left-1/2 m-0 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl p-0 shadow-border-lg backdrop:bg-neutral-900/40">
+        <div class="p-6">
+            <h3 class="text-base font-semibold text-neutral-900">Cetak dokumen apa?</h3>
+            <p class="mt-2 text-sm text-neutral-600">Pilih bentuk dokumen yang ingin dicetak untuk {{ $this->mahasiswa->nama ?? 'mahasiswa ini' }}.</p>
+
+            <div class="mt-5 space-y-3">
+                <a
+                    href="{{ route('admin.akademik.nilai.transkrip', $mahasiswaId) }}"
+                    target="_blank"
+                    rel="noopener"
+                    onclick="document.getElementById('pilih-format-cetak-modal').close()"
+                    class="flex gap-3 rounded-xl p-4 text-left transition hover:bg-neutral-50 shadow-border"
+                >
+                    <i data-lucide="award" class="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" aria-hidden="true"></i>
+                    <span>
+                        <span class="block text-sm font-medium text-neutral-900">Transkrip Nilai</span>
+                        <span class="mt-1 block text-xs text-neutral-500">
+                            Dokumen resmi dwibahasa dengan kop, pas foto, nomor ijazah/transkrip, dan blok tanda
+                            tangan pejabat. Selalu seluruh masa studi, hanya mata kuliah bernilai final.
+                        </span>
+                    </span>
+                </a>
+
+                <a
+                    href="{{ route('admin.akademik.nilai.cetak', $mahasiswaId) }}{{ $filterSemester !== '' ? '?id_semester='.$filterSemester : '' }}"
+                    target="_blank"
+                    rel="noopener"
+                    onclick="document.getElementById('pilih-format-cetak-modal').close()"
+                    class="flex gap-3 rounded-xl p-4 text-left transition hover:bg-neutral-50 shadow-border"
+                >
+                    <i data-lucide="file-text" class="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" aria-hidden="true"></i>
+                    <span>
+                        <span class="block text-sm font-medium text-neutral-900">Laporan Nilai</span>
+                        <span class="mt-1 block text-xs text-neutral-500">
+                            Rekap nilai sesuai filter yang sedang aktif di layar{{ $filterSemester !== '' ? ' (semester terpilih)' : '' }},
+                            termasuk mata kuliah yang belum dinilai.
+                        </span>
+                    </span>
+                </a>
+            </div>
+
+            <div class="mt-5 flex justify-end">
+                <button
+                    type="button"
+                    onclick="document.getElementById('pilih-format-cetak-modal').close()"
+                    class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 shadow-border"
+                >
+                    Batal
+                </button>
+            </div>
+        </div>
+    </dialog>
+
 </div>

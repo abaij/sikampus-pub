@@ -74,6 +74,10 @@ return [
         'jenis-daftar' => 'manage jenis pendaftaran',
         'jenis-matkul' => 'manage jenis mata kuliah',
         'status-akademik' => 'manage status akademik',
+        // Penandatangan transkrip menumpang permission 'manage nilai' — halamannya cuma
+        // menentukan identitas penandatangan pada transkrip yang dicetak dari modul Nilai,
+        // jadi tidak perlu permission sendiri yang harus di-seed dan di-assign ulang.
+        'akademik.penandatangan-transkrip' => 'manage nilai',
 
         // Pengaturan pengguna — permission-nya hanya dimiliki Superadmin secara default. Modul
         // Pengguna sendiri (create/edit/hapus/assign role/assign permission) SENGAJA TIDAK dipecah

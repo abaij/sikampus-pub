@@ -8,9 +8,11 @@ use App\Models\Mahasiswa;
 use App\Models\Nilai;
 use App\Models\Semester;
 use App\Models\Setting;
+use App\Services\TranskripPdfGenerator;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -21,7 +23,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Export (xlsx) & cetak (PDF, tab baru) untuk halaman detail nilai — dipanggil dari tombol
- * Export/Cetak di App\Livewire\Admin\Nilai\Show. Logikanya sengaja disalin ulang dari
+ * Export/Cetak di App\Livewire\Admin\Nilai\Show. Tombol Cetak menawarkan dua bentuk:
+ * pdf() = "Laporan Nilai" (mengikuti filter semester di layar, menampilkan seluruh KRS termasuk
+ * yang belum dinilai) dan transkrip() = "Transkrip Nilai" (dokumen resmi dwibahasa, selalu
+ * seluruh masa studi, hanya mata kuliah bernilai final). Logikanya sengaja disalin ulang dari
  * NilaiController::exportNilaiMahasiswa/exportNilaiMahasiswaPdf (bukan di-share), sama seperti
  * KrsCetakController terhadap KrsController — lihat skill siak-livewire-module.
  */
@@ -341,5 +346,36 @@ class NilaiExportController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Cetak transkrip nilai resmi (PDF, tab baru).
+     *
+     * Sengaja TIDAK menerima filter semester/pencarian seperti pdf(): transkrip adalah rekap
+     * seluruh masa studi, memfilternya per semester akan menghasilkan dokumen resmi yang isinya
+     * tidak lengkap. Pemeriksaan scope prodi tetap sama dengan loadData().
+     */
+    public function transkrip(int $id): Response
+    {
+        $mahasiswa = Mahasiswa::findOrFail($id);
+
+        $user = Auth::user();
+        if ($user && $user->hasScopeRestriction()) {
+            $allowedProdiIds = $user->getAllowedProdiIds();
+            if ($allowedProdiIds !== null && ! in_array((int) $mahasiswa->id_prodi, $allowedProdiIds, true)) {
+                abort(403, 'Anda tidak memiliki akses ke data nilai mahasiswa ini.');
+            }
+        }
+
+        $pdf = (new TranskripPdfGenerator)->pdf($mahasiswa);
+
+        $filename = 'transkrip_'.preg_replace('/[^A-Za-z0-9_-]/', '', (string) $mahasiswa->nim).'.pdf';
+
+        // "inline" (bukan attachment) supaya PDF-nya terbuka langsung di tab baru untuk diperiksa
+        // sebelum dicetak — sama posturnya dengan pdf() dan KrsCetakController::show().
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+        ]);
     }
 }

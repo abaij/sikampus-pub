@@ -147,6 +147,7 @@ use App\Livewire\Admin\Tagihan\Form as TagihanForm;
 use App\Livewire\Admin\Tagihan\Generate as TagihanGenerate;
 use App\Livewire\Admin\Tagihan\Index as TagihanIndex;
 use App\Livewire\Admin\Tagihan\Show as TagihanShow;
+use App\Livewire\Admin\Transkrip\Penandatangan as TranskripPenandatangan;
 use App\Livewire\Admin\TugasAkhir\Import as TugasAkhirImport;
 use App\Livewire\Admin\TugasAkhir\Index as TugasAkhirIndex;
 use App\Livewire\Admin\TugasAkhir\Show as TugasAkhirShow;
@@ -433,6 +434,7 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::livewire('akademik/nilai/import', NilaiImport::class)->name('akademik.nilai.import');
         Route::get('akademik/nilai/{id}/export', [NilaiExportController::class, 'excel'])->name('akademik.nilai.export');
         Route::get('akademik/nilai/{id}/cetak', [NilaiExportController::class, 'pdf'])->name('akademik.nilai.cetak');
+        Route::get('akademik/nilai/{id}/transkrip', [NilaiExportController::class, 'transkrip'])->name('akademik.nilai.transkrip');
         Route::livewire('akademik/nilai/{id}/{idKrs}/edit', NilaiForm::class)->name('akademik.nilai.edit');
         Route::livewire('akademik/nilai/{id}', NilaiShow::class)->name('akademik.nilai.show');
 
@@ -626,6 +628,12 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::livewire('jenis-matkul', JenisMatkulIndex::class)->name('jenis-matkul.index');
         Route::livewire('jenis-matkul/create', JenisMatkulForm::class)->name('jenis-matkul.create');
         Route::livewire('jenis-matkul/{id}/edit', JenisMatkulForm::class)->name('jenis-matkul.edit');
+
+        // Pengaturan penandatangan transkrip — bukan CRUD, satu form key/value seperti
+        // sistem/pengaturan (SMTP). Tidak dibatasi role.admin.superadmin: isinya identitas
+        // pejabat penandatangan, bukan kredensial, dan yang mencetak transkrip adalah bagian
+        // akademik. Penjagaannya lewat permission 'manage nilai' di config/panel_access.php.
+        Route::livewire('akademik/penandatangan-transkrip', TranskripPenandatangan::class)->name('akademik.penandatangan-transkrip');
 
         Route::livewire('status-akademik', StatusAkademikIndex::class)->name('status-akademik.index');
         Route::livewire('status-akademik/create', StatusAkademikForm::class)->name('status-akademik.create');

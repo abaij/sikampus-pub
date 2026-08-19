@@ -82,6 +82,7 @@
                     ['route' => 'admin.jenis-daftar.index', 'label' => 'Jenis Daftar'],
                     ['route' => 'admin.jenis-matkul.index', 'label' => 'Jenis Mata Kuliah'],
                     ['route' => 'admin.status-akademik.index', 'label' => 'Status Akademik'],
+                    ['route' => 'admin.akademik.penandatangan-transkrip', 'label' => 'Penandatangan Transkrip'],
                 ]],
                 ['label' => 'Pengguna', 'children' => [
                     ['route' => 'admin.pengguna.index', 'label' => 'Pengguna'],
