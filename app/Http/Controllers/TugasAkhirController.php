@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date as ExcelDate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
@@ -118,14 +119,22 @@ class TugasAkhirController extends Controller
             'Kode Dosen Pembimbing (koma, Opsional)',
             'Kode Dosen Penguji (koma, Opsional)',
             'File Tugas Akhir (path relatif di storage disk public; file harus sudah diunggah ke server, contoh: tugas-akhir/nama_file.pdf) (Opsional)',
+            'Kode Semester Ujian Sidang (Opsional; isi untuk sekaligus membuat/memperbarui data ujian sidang)',
+            'Tanggal Ujian Mulai (Opsional, format tanggal bebas mis. 2026-01-15)',
+            'Tanggal Ujian Selesai (Opsional)',
+            'Status Ujian Sidang (Opsional, default: draft)',
+            'Kode Dosen Penguji Sidang (koma, Opsional; kosongkan jika penguji belum ditentukan)',
+            'Nilai Penguji Sidang (koma, sejajar urutan dengan Kode Dosen Penguji Sidang, angka 0-999.99) (Opsional)',
+            'Catatan Penguji Sidang (pisahkan per dosen dengan karakter |, sejajar urutan dengan Kode Dosen Penguji Sidang; jangan pakai | di dalam teks catatan) (Opsional)',
+            'Kode Dosen Ketua Sidang (satu kode, harus salah satu dari Kode Dosen Penguji Sidang) (Opsional)',
         ];
         $sheet->fromArray([$headers], null, 'A1');
 
-        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] as $col) {
+        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'] as $col) {
             $sheet->getColumnDimension($col)->setWidth(26);
         }
 
-        $sheet->getStyle('A1:L1')->applyFromArray([
+        $sheet->getStyle('A1:T1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4472C4']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
@@ -144,6 +153,14 @@ class TugasAkhirController extends Controller
             'DSN001, DSN002',
             'DSN003',
             'tugas-akhir/contoh-berkas.pdf',
+            '20252',
+            '2026-01-15',
+            '2026-01-15',
+            'submitted',
+            'DSN004, DSN005',
+            '85, 78',
+            'Penguasaan materi baik|Perlu revisi kecil di bab 3',
+            'DSN004',
         ];
         $sheet->fromArray([$exampleRow], null, 'A2');
 
@@ -190,6 +207,41 @@ class TugasAkhirController extends Controller
      * berkasnya. Sengaja begini: berkas boleh menyusul diunggah belakangan (mis. proses migrasi
      * bertahap), jadi path yang "belum ada saat ini" tidak boleh membuat data lain di baris gagal
      * atau bahkan bikin kolom file-nya dikosongkan.
+     *
+     * Data ujian sidang (ujian_sidang) ikut diimport dalam baris yang sama, karena keduanya
+     * berkaitan langsung — TIDAK ada endpoint store() admin-side untuk ujian sidang yang dipanggil
+     * lewat model lain, jadi dicerminkan dari storeUjianSidang/storePengujiSidang. Seluruh bagian
+     * ujian sidang bersifat OPSIONAL per baris: kalau "Kode Semester Ujian Sidang" kosong, baris itu
+     * tidak menyentuh data ujian sidang sama sekali (baik create maupun update) — supaya import yang
+     * cuma berisi data tugas akhir (tanpa info sidang) tetap bisa dipakai seperti sebelumnya. Kalau
+     * diisi, kombinasi (id_tugas_akhir, id_semester) jadi kunci baris ujian_sidang — sama seperti
+     * (id_mahasiswa, id_semester) untuk tugas_akhir: kalau sudah ada, di-UPDATE dengan aturan
+     * blank-cell-berarti-pertahankan-nilai-lama yang sama (Tanggal Ujian Mulai/Selesai, Status);
+     * kalau belum ada, dibuat baru dengan default status 'draft' (sama seperti storeUjianSidang).
+     *
+     * Dosen penguji sidang (ujian_sidang_penguji) juga opsional dan mengikuti pola sinkron yang sama
+     * dengan pembimbing/penguji tugas akhir: kolom kosong tidak menyentuh data penguji yang sudah
+     * ada, kolom terisi men-sinkronkan daftarnya. Sesuai permintaan eksplisit: kalau penguji sidang
+     * belum ditentukan, kolom ini cukup dikosongkan — ujian sidang tetap terimport tanpa penguji,
+     * bukan error. Kalau kolom diisi tapi salah satu kode dosen tidak ditemukan, SELURUH baris
+     * (termasuk data tugas akhirnya) digagalkan — konsisten dengan aturan Kode Dosen Pembimbing/
+     * Penguji di atas.
+     *
+     * Nilai, Catatan, dan Kode Dosen Ketua Sidang bisa ikut diimport per dosen penguji — karena satu
+     * baris bisa punya lebih dari satu penguji, Nilai dan Catatan ditulis sebagai daftar yang
+     * SEJAJAR URUTAN dengan Kode Dosen Penguji Sidang (index ke-i berlaku untuk dosen ke-i). Nilai
+     * dipisah koma (mis. "85, 78"), Catatan dipisah karakter "|" (BUKAN koma, supaya teks catatan
+     * boleh mengandung koma) — kalau salah satu dosen belum dinilai/dicatat, kosongkan slotnya
+     * (mis. "85, , 90"). Karena posisinya harus presisi, kode dosen penguji sidang di kolom ini
+     * TIDAK di-dedup seperti Kode Dosen Pembimbing/Penguji tugas akhir — kode yang duplikat dalam
+     * satu baris dianggap error (menggagalkan seluruh baris), bukan disaring diam-diam. Kode Dosen
+     * Ketua Sidang adalah satu kode saja dan harus salah satu dari daftar Kode Dosen Penguji Sidang
+     * di baris yang sama; dosen dengan kode itu di-set is_ketua=true, dosen penguji lain di baris itu
+     * eksplisit di-set is_ketua=false. Ketiga kolom ini blank-cell-berarti-pertahankan-nilai-lama
+     * PER DOSEN saat update (nilai/catatan yang dikosongkan tidak menimpa nilai/catatan lama dosen
+     * itu; kolom Kode Dosen Ketua Sidang yang dikosongkan tidak mengubah is_ketua siapa pun) — beda
+     * dari kolom lain yang preserve per-baris, di sini preserve-nya per-dosen karena satu baris bisa
+     * berisi banyak dosen dengan kondisi isi-kosong yang berbeda-beda.
      */
     public function import(Request $request): JsonResponse
     {
@@ -212,6 +264,8 @@ class TugasAkhirController extends Controller
         $errors = [];
         $successCount = 0;
         $updatedCount = 0;
+        $ujianSidangSuccessCount = 0;
+        $ujianSidangUpdatedCount = 0;
 
         $user = $request->user();
         $allowedProdiIds = ($user && $user->hasScopeRestriction()) ? $user->getAllowedProdiIds() : null;
@@ -322,6 +376,106 @@ class TugasAkhirController extends Controller
                 // import() soal kenapa (berkas boleh menyusul diunggah belakangan).
                 $fileRaw = trim((string) ($row[11] ?? ''));
 
+                // Ujian sidang sepenuhnya opsional per baris — lihat catatan di docblock import().
+                // Kode Semester Ujian Sidang kosong = jangan sentuh data ujian sidang sama sekali.
+                $kodeSemesterSidangRaw = trim((string) ($row[12] ?? ''));
+                $semesterSidang = null;
+                $statusSidangRaw = '';
+                $tanggalMulaiSidang = null;
+                $tanggalSelesaiSidang = null;
+                $kodePengujiSidangRaw = '';
+                $pengujiSidangEntries = [];
+                $ketuaSidangKolomDiisi = false;
+
+                if ($kodeSemesterSidangRaw !== '') {
+                    $semesterSidang = Semester::where('kode', $kodeSemesterSidangRaw)->first();
+                    if (! $semesterSidang) {
+                        $errors[] = "Baris {$rowNumber}: Semester ujian sidang dengan kode '{$kodeSemesterSidangRaw}' tidak ditemukan.";
+
+                        continue;
+                    }
+
+                    $statusSidangRaw = trim((string) ($row[15] ?? ''));
+                    if ($statusSidangRaw !== '' && ! in_array($statusSidangRaw, self::UJIAN_SIDANG_STATUSES, true)) {
+                        $errors[] = "Baris {$rowNumber}: Status ujian sidang '{$statusSidangRaw}' tidak valid. Gunakan salah satu: ".implode(', ', self::UJIAN_SIDANG_STATUSES).'.';
+
+                        continue;
+                    }
+
+                    $tanggalMulaiSidangRaw = self::normalizeImportDate($row[13] ?? null);
+                    $tanggalSelesaiSidangRaw = self::normalizeImportDate($row[14] ?? null);
+                    $tanggalMulaiSidang = $tanggalMulaiSidangRaw !== null ? Carbon::parse($tanggalMulaiSidangRaw) : null;
+                    $tanggalSelesaiSidang = $tanggalSelesaiSidangRaw !== null ? Carbon::parse($tanggalSelesaiSidangRaw) : null;
+                    if ($tanggalMulaiSidang !== null && $tanggalSelesaiSidang !== null && $tanggalSelesaiSidang->lt($tanggalMulaiSidang)) {
+                        $errors[] = "Baris {$rowNumber}: Tanggal selesai ujian sidang harus sama atau setelah tanggal mulai.";
+
+                        continue;
+                    }
+
+                    $kodePengujiSidangRaw = trim((string) ($row[16] ?? ''));
+                    $nilaiPengujiSidangRaw = trim((string) ($row[17] ?? ''));
+                    $catatanPengujiSidangRaw = trim((string) ($row[18] ?? ''));
+                    $kodeKetuaSidangRaw = trim((string) ($row[19] ?? ''));
+                    $ketuaSidangKolomDiisi = $kodeKetuaSidangRaw !== '';
+
+                    if ($ketuaSidangKolomDiisi && $kodePengujiSidangRaw === '') {
+                        $errors[] = "Baris {$rowNumber}: Kode Dosen Ketua Sidang diisi tapi Kode Dosen Penguji Sidang kosong.";
+
+                        continue;
+                    }
+
+                    if ($kodePengujiSidangRaw !== '') {
+                        // Dipakai TANPA dedup (beda dari splitKodeDosenList) supaya urutannya tetap
+                        // sejajar dengan Nilai/Catatan Penguji Sidang — lihat catatan di docblock
+                        // import(). Kode ganda dianggap error, bukan disaring diam-diam.
+                        $kodeListSidang = self::splitKodeDosenListOrdered($kodePengujiSidangRaw);
+                        if (count($kodeListSidang) !== count(array_unique($kodeListSidang))) {
+                            $errors[] = "Baris {$rowNumber}: Kode Dosen Penguji Sidang mengandung kode yang duplikat.";
+
+                            continue;
+                        }
+
+                        if ($ketuaSidangKolomDiisi && ! in_array($kodeKetuaSidangRaw, $kodeListSidang, true)) {
+                            $errors[] = "Baris {$rowNumber}: Kode Dosen Ketua Sidang '{$kodeKetuaSidangRaw}' harus salah satu dari Kode Dosen Penguji Sidang.";
+
+                            continue;
+                        }
+
+                        // Nilai/Catatan sengaja TIDAK dipecah dengan splitKodeDosenListOrdered —
+                        // posisinya harus sejajar apa adanya (index ke-i) dengan kode dosen ke-i,
+                        // termasuk slot kosong di tengah (mis. "85,,90").
+                        $nilaiListSidang = $nilaiPengujiSidangRaw !== '' ? explode(',', $nilaiPengujiSidangRaw) : [];
+                        $catatanListSidang = $catatanPengujiSidangRaw !== '' ? explode('|', $catatanPengujiSidangRaw) : [];
+
+                        foreach ($kodeListSidang as $i => $kd) {
+                            $d = Dosen::where('kode_dosen', $kd)->first();
+                            if (! $d) {
+                                $errors[] = "Baris {$rowNumber}: Dosen penguji sidang — kode '{$kd}' tidak ditemukan.";
+
+                                continue 2;
+                            }
+
+                            $nilaiRawItem = trim((string) ($nilaiListSidang[$i] ?? ''));
+                            if ($nilaiRawItem !== '' && (! is_numeric($nilaiRawItem) || (float) $nilaiRawItem < 0 || (float) $nilaiRawItem > 999.99)) {
+                                $errors[] = "Baris {$rowNumber}: Nilai penguji sidang untuk kode '{$kd}' tidak valid (harus angka 0–999.99).";
+
+                                continue 2;
+                            }
+
+                            $catatanRawItem = trim((string) ($catatanListSidang[$i] ?? ''));
+
+                            $pengujiSidangEntries[] = [
+                                'id_dosen' => (int) $d->id,
+                                'nilai' => $nilaiRawItem !== '' ? (float) $nilaiRawItem : null,
+                                'has_nilai' => $nilaiRawItem !== '',
+                                'catatan' => $catatanRawItem !== '' ? $catatanRawItem : null,
+                                'has_catatan' => $catatanRawItem !== '',
+                                'is_ketua' => $ketuaSidangKolomDiisi && $kd === $kodeKetuaSidangRaw,
+                            ];
+                        }
+                    }
+                }
+
                 if ($isUpdate) {
                     $updatePayload = [
                         'judul' => $judul,
@@ -368,15 +522,60 @@ class TugasAkhirController extends Controller
                 if ($kodePengujiRaw !== '') {
                     $this->syncTugasAkhirPembimbing($tugasAkhirRow, 'penguji', $pengujiDosenIds, $actor);
                 }
+
+                // Kode Semester Ujian Sidang kosong = tidak menyentuh data ujian sidang sama sekali.
+                if ($kodeSemesterSidangRaw !== '') {
+                    $existingUjianSidang = UjianSidang::where('id_tugas_akhir', $tugasAkhirRow->id)
+                        ->where('id_semester', $semesterSidang->id)
+                        ->first();
+                    $isUpdateUjianSidang = $existingUjianSidang !== null;
+
+                    $statusSidang = $statusSidangRaw !== ''
+                        ? $statusSidangRaw
+                        : ($isUpdateUjianSidang ? $existingUjianSidang->status : 'draft');
+                    $mulaiFinal = $tanggalMulaiSidang ?? ($isUpdateUjianSidang ? $existingUjianSidang->tanggal_ujian_mulai : null);
+                    $selesaiFinal = $tanggalSelesaiSidang ?? ($isUpdateUjianSidang ? $existingUjianSidang->tanggal_ujian_selesai : null);
+
+                    if ($isUpdateUjianSidang) {
+                        $existingUjianSidang->update([
+                            'status' => $statusSidang,
+                            'tanggal_ujian_mulai' => $mulaiFinal,
+                            'tanggal_ujian_selesai' => $selesaiFinal,
+                            'updated_by' => $actor,
+                        ]);
+                        $ujianSidangRow = $existingUjianSidang;
+                        $ujianSidangUpdatedCount++;
+                    } else {
+                        $ujianSidangRow = UjianSidang::create([
+                            'id_tugas_akhir' => $tugasAkhirRow->id,
+                            'id_semester' => $semesterSidang->id,
+                            'tanggal_daftar' => now(),
+                            'status' => $statusSidang,
+                            'tanggal_ujian_mulai' => $mulaiFinal,
+                            'tanggal_ujian_selesai' => $selesaiFinal,
+                            'created_by' => $actor,
+                            'updated_by' => $actor,
+                        ]);
+                        $ujianSidangSuccessCount++;
+                    }
+
+                    // Kosong = jangan sentuh penguji yang sudah ada (termasuk kalau memang belum
+                    // ditentukan — lihat catatan di docblock import()); terisi = sinkronkan daftarnya.
+                    if ($kodePengujiSidangRaw !== '') {
+                        $this->syncUjianSidangPenguji($ujianSidangRow, $pengujiSidangEntries, $ketuaSidangKolomDiisi, $actor);
+                    }
+                }
             }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => "Import selesai. Berhasil: {$successCount}, Diperbarui: {$updatedCount}, Error: ".count($errors),
+                'message' => "Import selesai. Tugas akhir — Berhasil: {$successCount}, Diperbarui: {$updatedCount}. Ujian sidang — Berhasil: {$ujianSidangSuccessCount}, Diperbarui: {$ujianSidangUpdatedCount}. Error: ".count($errors),
                 'success_count' => $successCount,
                 'updated_count' => $updatedCount,
+                'ujian_sidang_success_count' => $ujianSidangSuccessCount,
+                'ujian_sidang_updated_count' => $ujianSidangUpdatedCount,
                 'error_count' => count($errors),
                 'errors' => $errors,
             ]);
@@ -417,6 +616,61 @@ class TugasAkhirController extends Controller
     }
 
     /**
+     * Sama dengan splitKodeDosenList, TAPI TIDAK dedup dan TIDAK filter kosong — dipakai khusus
+     * untuk Kode Dosen Penguji Sidang karena urutan & jumlah itemnya harus tetap sejajar (index
+     * ke-i) dengan Nilai/Catatan Penguji Sidang. Kode duplikat divalidasi terpisah oleh pemanggil
+     * (dianggap error, bukan disaring diam-diam) supaya tidak ada ambiguitas nilai/catatan siapa
+     * yang berlaku untuk kode yang sama.
+     *
+     * @return list<string>
+     */
+    private static function splitKodeDosenListOrdered(string $raw): array
+    {
+        $parts = preg_split('/[,;\n\r]+/', $raw, -1, PREG_SPLIT_NO_EMPTY);
+
+        return array_values(array_filter(array_map('trim', $parts ?: []), fn ($v) => $v !== ''));
+    }
+
+    /**
+     * Terima tanggal dari Excel baik sebagai string, objek tanggal, maupun serial number Excel.
+     * Sama dengan pola normalizeImportDate di YudisiumController/MahasiswaController.
+     */
+    private static function normalizeImportDate(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+        if (is_numeric($value)) {
+            $n = (float) $value;
+            if ($n > 200 && $n < 120_000) {
+                try {
+                    return ExcelDate::excelToDateTimeObject($n)->format('Y-m-d');
+                } catch (\Throwable) {
+                    return null;
+                }
+            }
+
+            return null;
+        }
+        if (is_string($value)) {
+            $t = trim($value);
+            if ($t === '') {
+                return null;
+            }
+            try {
+                return Carbon::parse($t)->format('Y-m-d');
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Sinkronkan tugas_akhir_pembimbing untuk satu peran ('pembimbing' atau 'penguji') ke daftar
      * dosen baru: dosen yang sudah ada (termasuk yang soft-deleted) dipulihkan/dibiarkan, dosen
      * baru dibuat, dan dosen lama yang tidak ada lagi di daftar dihapus. Dipanggil untuk baris baru
@@ -451,6 +705,76 @@ class TugasAkhirController extends Controller
                     'created_by' => $actor,
                     'updated_by' => $actor,
                 ]);
+            }
+        }
+
+        foreach ($rows as $row) {
+            if ($row->trashed()) {
+                continue;
+            }
+            if (! in_array((int) $row->id_dosen, $dosenIds, true)) {
+                $row->update(['deleted_by' => $actor, 'updated_by' => $actor]);
+                $row->delete();
+            }
+        }
+    }
+
+    /**
+     * Sinkronkan ujian_sidang_penguji ke daftar dosen baru — pola dasarnya sama dengan
+     * syncTugasAkhirPembimbing (dosen lama yang tidak ada di daftar baru dihapus, dosen baru
+     * dibuat), hanya saja ujian_sidang_penguji punya field tambahan per dosen (nilai, catatan,
+     * is_ketua) yang IKUT aturan blank-cell-berarti-pertahankan-nilai-lama: `has_nilai`/
+     * `has_catatan` menandai apakah kolom itu benar-benar diisi di Excel (bukan cuma null berarti
+     * "isi dengan null") — kalau tidak diisi, field itu tidak disentuh sama sekali saat update.
+     * `is_ketua` hanya disentuh untuk SELURUH daftar penguji baris ini kalau kolom Kode Dosen Ketua
+     * Sidang diisi ($ketuaSidangKolomDiisi) — supaya tepat satu penguji jadi ketua dan yang lain
+     * eksplisit di-set false; kalau kolom itu kosong, is_ketua semua entri (baru maupun lama)
+     * dibiarkan seperti sebelumnya (baris baru tetap default false, sama seperti storePengujiSidang).
+     * status tetap selalu default 'draft' untuk baris baru dan tidak disentuh saat update, karena
+     * import tidak menerima kolom untuk itu.
+     *
+     * @param  list<array{id_dosen: int, nilai: ?float, has_nilai: bool, catatan: ?string, has_catatan: bool, is_ketua: bool}>  $entries
+     */
+    private function syncUjianSidangPenguji(UjianSidang $ujianSidang, array $entries, bool $ketuaSidangKolomDiisi, string $actor): void
+    {
+        $dosenIds = array_values(array_unique(array_map(fn (array $e) => (int) $e['id_dosen'], $entries)));
+
+        $rows = UjianSidangPenguji::withTrashed()
+            ->where('id_ujian_sidang', $ujianSidang->id)
+            ->get();
+        $byDosen = $rows->keyBy('id_dosen');
+
+        foreach ($entries as $entry) {
+            $idDosen = (int) $entry['id_dosen'];
+
+            $update = ['updated_by' => $actor];
+            if ($entry['has_nilai']) {
+                $update['nilai'] = $entry['nilai'];
+            }
+            if ($entry['has_catatan']) {
+                $update['catatan'] = $entry['catatan'];
+            }
+            if ($ketuaSidangKolomDiisi) {
+                $update['is_ketua'] = $entry['is_ketua'];
+            }
+
+            $existingRow = $byDosen->get($idDosen);
+            if ($existingRow) {
+                if ($existingRow->trashed()) {
+                    $existingRow->restore();
+                    $update['deleted_by'] = null;
+                }
+                $existingRow->update($update);
+            } else {
+                UjianSidangPenguji::create(array_merge([
+                    'id_ujian_sidang' => $ujianSidang->id,
+                    'id_dosen' => $idDosen,
+                    'is_ketua' => $entry['is_ketua'],
+                    'nilai' => $entry['nilai'],
+                    'catatan' => $entry['catatan'],
+                    'status' => 'draft',
+                    'created_by' => $actor,
+                ], $update));
             }
         }
 

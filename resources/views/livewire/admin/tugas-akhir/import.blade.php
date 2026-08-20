@@ -46,6 +46,13 @@
             <li>Judul (English), Topik, Topik (English), dan Deskripsi semuanya opsional. Is Proposal opsional (true/false, default true untuk data baru kalau kosong).</li>
             <li>Kode Dosen Pembimbing dan Kode Dosen Penguji opsional — isi dengan kode dosen yang sudah ada di sistem, pisahkan dengan koma kalau lebih dari satu (mis. <span class="font-mono">DSN001, DSN002</span>). Kalau salah satu kode tidak ditemukan, seluruh baris tugas akhir itu gagal diimport, bukan cuma pembimbingnya. Kalau kolom ini dikosongkan pada data yang sudah ada, pembimbing/penguji yang sudah tercatat tidak diubah; kalau diisi, daftarnya menggantikan (sinkron) daftar yang lama.</li>
             <li>Kolom File opsional dan <span class="font-semibold">bukan</span> upload berkas — isi dengan path relatif berkas di storage server (mis. <span class="font-mono">tugas-akhir/nama_file.pdf</span>). Path disimpan apa adanya tanpa dicek ke storage, jadi berkasnya boleh menyusul diunggah belakangan.</li>
+            <li>Kolom Kode Semester Ujian Sidang opsional — isi kalau baris ini juga ingin sekaligus membuat/memperbarui data ujian sidang untuk tugas akhir tersebut. Kosongkan kalau baris ini hanya untuk data tugas akhir saja (data ujian sidang tidak disentuh sama sekali).</li>
+            <li>Kalau Kode Semester Ujian Sidang diisi: Tanggal Ujian Mulai, Tanggal Ujian Selesai, dan Status Ujian Sidang (default "draft" untuk data baru) semuanya opsional — pada data ujian sidang yang sudah ada, kolom yang dikosongkan juga mempertahankan nilai lama, sama seperti aturan data tugas akhir di atas.</li>
+            <li>Kode Dosen Penguji Sidang opsional — isi dengan kode dosen, pisahkan koma kalau lebih dari satu. <span class="font-semibold">Kalau penguji sidang belum ditentukan, cukup kosongkan kolom ini</span> — ujian sidang tetap terimport tanpa penguji, bukan error. Kalau diisi tapi salah satu kode tidak ditemukan, seluruh baris (termasuk data tugas akhirnya) gagal diimport. Kode yang <span class="font-semibold">duplikat</span> dalam satu kolom juga dianggap error (tidak disaring diam-diam, beda dari Kode Dosen Pembimbing/Penguji tugas akhir).</li>
+            <li>Nilai dan Catatan Penguji Sidang opsional, ditulis sebagai daftar yang <span class="font-semibold">sejajar urutan</span> dengan Kode Dosen Penguji Sidang — item pertama berlaku untuk dosen pertama, dst. Nilai dipisah koma (mis. <span class="font-mono">85, 78</span>, angka 0–999.99), Catatan dipisah karakter <span class="font-mono">|</span> (mis. <span class="font-mono">Baik|Perlu revisi</span>) — <span class="font-semibold">bukan koma</span>, supaya teks catatan boleh mengandung koma. Kosongkan slot suatu dosen kalau dia belum dinilai/dicatat (mis. <span class="font-mono">85, , 90</span>).</li>
+            <li>Kode Dosen Ketua Sidang opsional — satu kode saja, harus salah satu dari Kode Dosen Penguji Sidang di baris yang sama; dosen itu ditandai sebagai ketua penguji, dosen penguji lain otomatis ditandai bukan ketua.</li>
+            <li>Nilai, Catatan, dan Kode Dosen Ketua Sidang mengikuti aturan <span class="font-semibold">mempertahankan nilai lama per dosen</span> saat memperbarui data yang sudah ada: slot yang dikosongkan tidak mengubah nilai/catatan dosen itu, dan kolom Kode Dosen Ketua Sidang yang dikosongkan tidak mengubah status ketua siapa pun.</li>
+            <li>Kolom yang dikosongkan pada Kode Dosen Penguji Sidang (baris sudah ada) tidak mengubah penguji yang sudah tercatat; kalau diisi, daftarnya disinkronkan (dosen lama yang tidak ada di daftar baru dihapus).</li>
             <li>Upload file (.xlsx atau .xls, maks 10MB) lalu klik "Proses Import".</li>
         </ol>
     </div>
@@ -85,16 +92,24 @@
 
             <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div class="rounded-lg bg-emerald-50 px-4 py-3">
-                    <p class="text-xs font-semibold uppercase text-emerald-700">Berhasil (Baru)</p>
+                    <p class="text-xs font-semibold uppercase text-emerald-700">Tugas Akhir Berhasil (Baru)</p>
                     <p class="mt-1 text-2xl font-semibold text-emerald-700">{{ $result['success_count'] }}</p>
                 </div>
                 <div class="rounded-lg bg-sky-50 px-4 py-3">
-                    <p class="text-xs font-semibold uppercase text-sky-700">Diperbarui</p>
+                    <p class="text-xs font-semibold uppercase text-sky-700">Tugas Akhir Diperbarui</p>
                     <p class="mt-1 text-2xl font-semibold text-sky-700">{{ $result['updated_count'] }}</p>
                 </div>
                 <div class="rounded-lg bg-amber-50 px-4 py-3">
                     <p class="text-xs font-semibold uppercase text-amber-700">Error</p>
                     <p class="mt-1 text-2xl font-semibold text-amber-700">{{ count($result['errors']) }}</p>
+                </div>
+                <div class="rounded-lg bg-violet-50 px-4 py-3">
+                    <p class="text-xs font-semibold uppercase text-violet-700">Ujian Sidang Berhasil (Baru)</p>
+                    <p class="mt-1 text-2xl font-semibold text-violet-700">{{ $result['ujian_sidang_success_count'] }}</p>
+                </div>
+                <div class="rounded-lg bg-indigo-50 px-4 py-3">
+                    <p class="text-xs font-semibold uppercase text-indigo-700">Ujian Sidang Diperbarui</p>
+                    <p class="mt-1 text-2xl font-semibold text-indigo-700">{{ $result['ujian_sidang_updated_count'] }}</p>
                 </div>
             </div>
 
