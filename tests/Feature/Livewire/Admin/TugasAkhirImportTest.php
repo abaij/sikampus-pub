@@ -1,11 +1,14 @@
 <?php
 
 use App\Livewire\Admin\TugasAkhir\Import;
+use App\Models\Dosen;
 use App\Models\Mahasiswa;
 use App\Models\Prodi;
 use App\Models\Semester;
 use App\Models\TugasAkhir;
+use App\Models\TugasAkhirPembimbing;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -162,30 +165,111 @@ it('records an error when the status value is invalid', function () {
     expect(TugasAkhir::count())->toBe(0);
 });
 
-it('rejects a duplicate mahasiswa + semester combination instead of updating it', function () {
+it('updates an existing mahasiswa + semester combination instead of rejecting it', function () {
     $admin = adminUser();
     $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000005']);
     $semester = Semester::factory()->create(['kode' => '20251']);
-    TugasAkhir::create([
+    $existing = TugasAkhir::create([
         'id_mahasiswa' => $mahasiswa->id,
         'id_semester' => $semester->id,
         'judul' => 'Judul lama',
         'status' => 'submitted',
+        'is_proposal' => true,
     ]);
 
     $file = makeTugasAkhirImportFile([
-        ['2024000005', '20251', 'Judul baru', '', '', '', '', '', ''],
+        ['2024000005', '20251', 'Judul baru', 'approved', '', '', '', '', 'false'],
     ]);
 
-    $component = Livewire::actingAs($admin)
+    Livewire::actingAs($admin)
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
-        ->assertSet('result.success_count', 0);
+        ->assertSet('result.success_count', 0)
+        ->assertSet('result.updated_count', 1)
+        ->assertSet('result.errors', []);
 
-    expect($component->get('result')['errors'][0])->toContain('sudah memiliki data tugas akhir');
     expect(TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->count())->toBe(1);
-    expect(TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->first()->judul)->toBe('Judul lama');
+    $existing->refresh();
+    expect($existing->judul)->toBe('Judul baru');
+    expect($existing->status)->toBe('approved');
+    expect($existing->is_proposal)->toBeFalse();
+});
+
+it('preserves existing optional field values when the corresponding cell is left blank on update', function () {
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000018']);
+    $semester = Semester::factory()->create(['kode' => '20251']);
+    $existing = TugasAkhir::create([
+        'id_mahasiswa' => $mahasiswa->id,
+        'id_semester' => $semester->id,
+        'judul' => 'Judul lama',
+        'judul_en' => 'Old English Title',
+        'topik' => 'Topik Lama',
+        'deskripsi' => 'Deskripsi lama',
+        'status' => 'approved',
+        'is_proposal' => false,
+        'file' => 'tugas-akhir/lama.pdf',
+    ]);
+
+    // Semua kolom opsional dikosongkan — hanya Judul yang diubah.
+    $file = makeTugasAkhirImportFile([
+        ['2024000018', '20251', 'Judul baru saja', '', '', '', '', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.updated_count', 1);
+
+    $existing->refresh();
+    expect($existing->judul)->toBe('Judul baru saja');
+    expect($existing->judul_en)->toBe('Old English Title');
+    expect($existing->topik)->toBe('Topik Lama');
+    expect($existing->deskripsi)->toBe('Deskripsi lama');
+    expect($existing->status)->toBe('approved');
+    expect($existing->is_proposal)->toBeFalse();
+    expect($existing->file)->toBe('tugas-akhir/lama.pdf');
+});
+
+it('syncs pembimbing on update when the column is filled, without touching it when blank', function () {
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000019']);
+    $semester = Semester::factory()->create(['kode' => '20251']);
+    $existingTugasAkhir = TugasAkhir::create([
+        'id_mahasiswa' => $mahasiswa->id,
+        'id_semester' => $semester->id,
+        'judul' => 'Judul',
+        'status' => 'submitted',
+    ]);
+    $dosenLama = Dosen::factory()->create(['kode_dosen' => 'DSN020']);
+    TugasAkhirPembimbing::create([
+        'id_tugas_akhir' => $existingTugasAkhir->id,
+        'id_dosen' => $dosenLama->id,
+        'peran' => 'pembimbing',
+    ]);
+
+    // Re-import pertama: kolom pembimbing dikosongkan — pembimbing lama harus tetap ada.
+    $fileBlank = makeTugasAkhirImportFile([
+        ['2024000019', '20251', 'Judul', '', '', '', '', '', '', '', '', ''],
+    ]);
+    Livewire::actingAs($admin)->test(Import::class)->set('file', $fileBlank)->call('import');
+    expect(TugasAkhirPembimbing::where('id_tugas_akhir', $existingTugasAkhir->id)->where('peran', 'pembimbing')->pluck('id_dosen')->all())
+        ->toBe([$dosenLama->id]);
+
+    // Re-import kedua: kolom pembimbing diisi dengan dosen lain — daftar disinkronkan (dosen lama hilang).
+    $dosenBaru = Dosen::factory()->create(['kode_dosen' => 'DSN021']);
+    $fileFilled = makeTugasAkhirImportFile([
+        ['2024000019', '20251', 'Judul', '', '', '', '', '', '', 'DSN021', ''],
+    ]);
+    Livewire::actingAs($admin)->test(Import::class)->set('file', $fileFilled)->call('import');
+
+    $pembimbingSekarang = TugasAkhirPembimbing::where('id_tugas_akhir', $existingTugasAkhir->id)
+        ->where('peran', 'pembimbing')
+        ->pluck('id_dosen')
+        ->all();
+    expect($pembimbingSekarang)->toBe([$dosenBaru->id]);
 });
 
 it('enforces prodi scope: hides an out-of-scope mahasiswa behind an error row', function () {
@@ -229,6 +313,209 @@ it('processes multiple rows independently, isolating one bad row from the rest',
         ->assertSet('result.success_count', 2);
 
     expect(TugasAkhir::count())->toBe(2);
+});
+
+it('creates pembimbing and penguji rows from comma-separated dosen codes', function () {
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000009']);
+    Semester::factory()->create(['kode' => '20251']);
+    $pembimbing1 = Dosen::factory()->create(['kode_dosen' => 'DSN001']);
+    $pembimbing2 = Dosen::factory()->create(['kode_dosen' => 'DSN002']);
+    $penguji1 = Dosen::factory()->create(['kode_dosen' => 'DSN003']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000009', '20251', 'Judul', '', '', '', '', '', '', 'DSN001, DSN002', 'DSN003'],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1)
+        ->assertSet('result.errors', []);
+
+    $tugasAkhir = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
+
+    $pembimbingRows = TugasAkhirPembimbing::where('id_tugas_akhir', $tugasAkhir->id)
+        ->where('peran', 'pembimbing')
+        ->pluck('id_dosen');
+    expect($pembimbingRows->sort()->values()->all())
+        ->toBe(collect([$pembimbing1->id, $pembimbing2->id])->sort()->values()->all());
+
+    $pengujiRows = TugasAkhirPembimbing::where('id_tugas_akhir', $tugasAkhir->id)
+        ->where('peran', 'penguji')
+        ->pluck('id_dosen');
+    expect($pengujiRows->all())->toBe([$penguji1->id]);
+});
+
+it('allows the same dosen to be both pembimbing and penguji on one tugas akhir', function () {
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000010']);
+    Semester::factory()->create(['kode' => '20251']);
+    $dosen = Dosen::factory()->create(['kode_dosen' => 'DSN010']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000010', '20251', 'Judul', '', '', '', '', '', '', 'DSN010', 'DSN010'],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1);
+
+    $tugasAkhir = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
+    expect(TugasAkhirPembimbing::where('id_tugas_akhir', $tugasAkhir->id)->where('id_dosen', $dosen->id)->count())->toBe(2);
+    expect(TugasAkhirPembimbing::where('id_tugas_akhir', $tugasAkhir->id)->pluck('peran')->sort()->values()->all())->toBe(['pembimbing', 'penguji']);
+});
+
+it('dedupes a repeated dosen code within the same pembimbing cell', function () {
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000011']);
+    Semester::factory()->create(['kode' => '20251']);
+    Dosen::factory()->create(['kode_dosen' => 'DSN011']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000011', '20251', 'Judul', '', '', '', '', '', '', 'DSN011, DSN011', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1);
+
+    $tugasAkhir = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
+    expect(TugasAkhirPembimbing::where('id_tugas_akhir', $tugasAkhir->id)->count())->toBe(1);
+});
+
+it('fails the whole row when a pembimbing dosen code is not found, creating nothing', function () {
+    $admin = adminUser();
+    Mahasiswa::factory()->create(['nim' => '2024000012']);
+    Semester::factory()->create(['kode' => '20251']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000012', '20251', 'Judul', '', '', '', '', '', '', 'TIDAK-ADA', ''],
+    ]);
+
+    $component = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 0);
+
+    expect($component->get('result')['errors'][0])->toContain("Dosen pembimbing — kode 'TIDAK-ADA' tidak ditemukan");
+    expect(TugasAkhir::count())->toBe(0);
+    expect(TugasAkhirPembimbing::count())->toBe(0);
+});
+
+it('fails the whole row when a penguji dosen code is not found, creating nothing', function () {
+    $admin = adminUser();
+    Mahasiswa::factory()->create(['nim' => '2024000013']);
+    Semester::factory()->create(['kode' => '20251']);
+    Dosen::factory()->create(['kode_dosen' => 'DSN013']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000013', '20251', 'Judul', '', '', '', '', '', '', 'DSN013', 'TIDAK-ADA'],
+    ]);
+
+    $component = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 0);
+
+    expect($component->get('result')['errors'][0])->toContain("Dosen penguji — kode 'TIDAK-ADA' tidak ditemukan");
+    expect(TugasAkhir::count())->toBe(0);
+    expect(TugasAkhirPembimbing::count())->toBe(0);
+});
+
+it('leaves pembimbing empty when the columns are blank', function () {
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000014']);
+    Semester::factory()->create(['kode' => '20251']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000014', '20251', 'Judul', '', '', '', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1);
+
+    $tugasAkhir = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
+    expect(TugasAkhirPembimbing::where('id_tugas_akhir', $tugasAkhir->id)->count())->toBe(0);
+});
+
+it('links a file path that already exists on the public disk', function () {
+    Storage::fake('public');
+    Storage::disk('public')->put('tugas-akhir/existing.pdf', 'isi-file-dummy');
+
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000015']);
+    Semester::factory()->create(['kode' => '20251']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000015', '20251', 'Judul', '', '', '', '', '', '', '', '', 'tugas-akhir/existing.pdf'],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1)
+        ->assertSet('result.errors', []);
+
+    $tugasAkhir = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
+    expect($tugasAkhir->file)->toBe('tugas-akhir/existing.pdf');
+});
+
+it('stores the file path as-is even when it does not exist on the public disk yet', function () {
+    // Sengaja tidak melakukan Storage::disk('public')->exists() check — path boleh menunjuk ke
+    // berkas yang belum diunggah saat import berjalan (mis. migrasi bertahap).
+    Storage::fake('public');
+
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000016']);
+    Semester::factory()->create(['kode' => '20251']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000016', '20251', 'Judul', '', '', '', '', '', '', '', '', 'tugas-akhir/belum-diunggah.pdf'],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1)
+        ->assertSet('result.errors', []);
+
+    $tugasAkhir = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
+    expect($tugasAkhir->file)->toBe('tugas-akhir/belum-diunggah.pdf');
+});
+
+it('leaves file null when the column is blank', function () {
+    Storage::fake('public');
+
+    $admin = adminUser();
+    $mahasiswa = Mahasiswa::factory()->create(['nim' => '2024000017']);
+    Semester::factory()->create(['kode' => '20251']);
+
+    $file = makeTugasAkhirImportFile([
+        ['2024000017', '20251', 'Judul', '', '', '', '', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1)
+        ->assertSet('result.errors', []);
+
+    $tugasAkhir = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
+    expect($tugasAkhir->file)->toBeNull();
 });
 
 it('redirects unauthenticated users to the login page', function () {

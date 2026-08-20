@@ -115,14 +115,17 @@ class TugasAkhirController extends Controller
             'Topik (English) (Opsional)',
             'Deskripsi (Opsional)',
             'Is Proposal (true/false, Opsional, default: true)',
+            'Kode Dosen Pembimbing (koma, Opsional)',
+            'Kode Dosen Penguji (koma, Opsional)',
+            'File Tugas Akhir (path relatif di storage disk public; file harus sudah diunggah ke server, contoh: tugas-akhir/nama_file.pdf) (Opsional)',
         ];
         $sheet->fromArray([$headers], null, 'A1');
 
-        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as $col) {
+        foreach (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'] as $col) {
             $sheet->getColumnDimension($col)->setWidth(26);
         }
 
-        $sheet->getStyle('A1:I1')->applyFromArray([
+        $sheet->getStyle('A1:L1')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4472C4']],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
@@ -138,6 +141,9 @@ class TugasAkhirController extends Controller
             'Software Engineering',
             '',
             'false',
+            'DSN001, DSN002',
+            'DSN003',
+            'tugas-akhir/contoh-berkas.pdf',
         ];
         $sheet->fromArray([$exampleRow], null, 'A2');
 
@@ -158,9 +164,32 @@ class TugasAkhirController extends Controller
      * dicerminkan langsung (mahasiswa mengajukan sendiri lewat storePengajuanMahasiswa, terikat
      * KRS TA semester aktif) — import ini dipakai untuk mengisi data historis/hasil migrasi, jadi
      * SENGAJA tidak mensyaratkan KRS Tugas Akhir yang disetujui seperti storePengajuanMahasiswa.
-     * Validasi lain yang tetap disamakan: mahasiswa & semester wajib ada, scope prodi admin
-     * dihormati, dan satu mahasiswa hanya boleh punya satu baris tugas_akhir per semester (modul
-     * ini tidak mendukung ubah/hapus lewat import, jadi duplikat dilaporkan sebagai error).
+     * Validasi lain yang tetap disamakan: mahasiswa & semester wajib ada, dan scope prodi admin
+     * dihormati.
+     *
+     * Kombinasi (id_mahasiswa, id_semester) adalah kunci baris — kalau sudah ada, baris di-UPDATE
+     * (bukan dilewati/dianggap error seperti sebelumnya). Aturan pengisian sel untuk mode update,
+     * sama seperti pola angka_mutu/huruf_mutu di NilaiController::import: Judul tetap wajib diisi
+     * di setiap baris (bukan cuma saat baris baru), tapi kolom opsional (Status, Judul (English),
+     * Topik, Topik (English), Deskripsi, Is Proposal, File) yang dikosongkan berarti "biarkan nilai
+     * lama", bukan "hapus/reset ke default" — supaya re-import sebagian data tidak diam-diam
+     * menimpa data lain yang sudah benar.
+     *
+     * Dosen pembimbing & penguji (tugas_akhir_pembimbing, kolom `peran`) opsional — satu mahasiswa
+     * boleh punya lebih dari satu dosen per peran, ditulis sebagai daftar kode dosen dipisah koma
+     * (pola sama dengan "Kode Tim Dosen" di KelasController::import). Kalau salah satu kode dosen
+     * di baris itu tidak ditemukan, SELURUH baris tugas akhir digagalkan (bukan cuma pembimbingnya)
+     * supaya tidak ada baris tugas_akhir yang setengah-lengkap datanya. Kolom pembimbing/penguji
+     * yang dikosongkan tidak menyentuh data pembimbing yang sudah ada; kalau diisi, daftarnya
+     * DISINKRONKAN (dosen lama yang tidak ada di daftar baru dihapus, yang baru ditambahkan) —
+     * pola sama dengan syncKelasDosen di KelasController::import.
+     *
+     * Kolom File opsional dan bukan upload — isinya path relatif berkas (karena Excel tidak bisa
+     * membawa file biner). Path ini DITULIS APA ADANYA ke kolom `file`, tanpa dicek dulu ke storage
+     * disk public — beda dari foto_path di MahasiswaController::import yang memvalidasi keberadaan
+     * berkasnya. Sengaja begini: berkas boleh menyusul diunggah belakangan (mis. proses migrasi
+     * bertahap), jadi path yang "belum ada saat ini" tidak boleh membuat data lain di baris gagal
+     * atau bahkan bikin kolom file-nya dikosongkan.
      */
     public function import(Request $request): JsonResponse
     {
@@ -182,6 +211,7 @@ class TugasAkhirController extends Controller
 
         $errors = [];
         $successCount = 0;
+        $updatedCount = 0;
 
         $user = $request->user();
         $allowedProdiIds = ($user && $user->hasScopeRestriction()) ? $user->getAllowedProdiIds() : null;
@@ -240,49 +270,113 @@ class TugasAkhirController extends Controller
                     continue;
                 }
 
-                $status = $statusRaw === '' ? 'submitted' : $statusRaw;
-                if (! in_array($status, self::STATUSES, true)) {
+                if ($statusRaw !== '' && ! in_array($statusRaw, self::STATUSES, true)) {
                     $errors[] = "Baris {$rowNumber}: Status '{$statusRaw}' tidak valid. Gunakan salah satu: ".implode(', ', self::STATUSES).'.';
 
                     continue;
                 }
 
-                $duplikat = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)
+                $existing = TugasAkhir::where('id_mahasiswa', $mahasiswa->id)
                     ->where('id_semester', $semester->id)
-                    ->exists();
-                if ($duplikat) {
-                    $errors[] = "Baris {$rowNumber}: Mahasiswa NIM '{$nim}' sudah memiliki data tugas akhir untuk semester '{$kodeSemester}'.";
+                    ->first();
+                $isUpdate = $existing !== null;
 
-                    continue;
+                // Kolom kosong = pertahankan nilai lama saat update, atau pakai default saat baris
+                // baru — lihat catatan di docblock import().
+                $status = $statusRaw !== '' ? $statusRaw : ($isUpdate ? $existing->status : 'submitted');
+
+                $isProposal = $isProposalRaw !== ''
+                    ? (filter_var($isProposalRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true)
+                    : ($isUpdate ? (bool) $existing->is_proposal : true);
+
+                $kodePembimbingRaw = trim((string) ($row[9] ?? ''));
+                $kodePengujiRaw = trim((string) ($row[10] ?? ''));
+
+                $pembimbingDosenIds = [];
+                if ($kodePembimbingRaw !== '') {
+                    foreach (self::splitKodeDosenList($kodePembimbingRaw) as $kd) {
+                        $d = Dosen::where('kode_dosen', $kd)->first();
+                        if (! $d) {
+                            $errors[] = "Baris {$rowNumber}: Dosen pembimbing — kode '{$kd}' tidak ditemukan.";
+
+                            continue 2;
+                        }
+                        $pembimbingDosenIds[] = (int) $d->id;
+                    }
                 }
 
-                $isProposal = $isProposalRaw === '' ? true : filter_var($isProposalRaw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                if ($isProposal === null) {
-                    $isProposal = true;
+                $pengujiDosenIds = [];
+                if ($kodePengujiRaw !== '') {
+                    foreach (self::splitKodeDosenList($kodePengujiRaw) as $kd) {
+                        $d = Dosen::where('kode_dosen', $kd)->first();
+                        if (! $d) {
+                            $errors[] = "Baris {$rowNumber}: Dosen penguji — kode '{$kd}' tidak ditemukan.";
+
+                            continue 2;
+                        }
+                        $pengujiDosenIds[] = (int) $d->id;
+                    }
                 }
 
-                TugasAkhir::create([
-                    'id_mahasiswa' => $mahasiswa->id,
-                    'id_semester' => $semester->id,
-                    'judul' => $judul,
-                    'judul_en' => self::nullIfBlank($row[4] ?? null),
-                    'topik' => self::nullIfBlank($row[5] ?? null),
-                    'topik_en' => self::nullIfBlank($row[6] ?? null),
-                    'deskripsi' => self::nullIfBlank($row[7] ?? null),
-                    'is_proposal' => $isProposal,
-                    'status' => $status,
-                    'created_by' => $actor,
-                    'updated_by' => $actor,
-                ]);
-                $successCount++;
+                // Path ditulis apa adanya, TANPA dicek ke storage — lihat catatan di docblock
+                // import() soal kenapa (berkas boleh menyusul diunggah belakangan).
+                $fileRaw = trim((string) ($row[11] ?? ''));
+
+                if ($isUpdate) {
+                    $updatePayload = [
+                        'judul' => $judul,
+                        'is_proposal' => $isProposal,
+                        'status' => $status,
+                        'updated_by' => $actor,
+                    ];
+                    foreach (['judul_en' => 4, 'topik' => 5, 'topik_en' => 6, 'deskripsi' => 7] as $field => $col) {
+                        $raw = trim((string) ($row[$col] ?? ''));
+                        if ($raw !== '') {
+                            $updatePayload[$field] = $raw;
+                        }
+                    }
+                    if ($fileRaw !== '') {
+                        $updatePayload['file'] = ltrim($fileRaw, '/');
+                    }
+
+                    $existing->update($updatePayload);
+                    $tugasAkhirRow = $existing;
+                    $updatedCount++;
+                } else {
+                    $tugasAkhirRow = TugasAkhir::create([
+                        'id_mahasiswa' => $mahasiswa->id,
+                        'id_semester' => $semester->id,
+                        'judul' => $judul,
+                        'judul_en' => self::nullIfBlank($row[4] ?? null),
+                        'topik' => self::nullIfBlank($row[5] ?? null),
+                        'topik_en' => self::nullIfBlank($row[6] ?? null),
+                        'deskripsi' => self::nullIfBlank($row[7] ?? null),
+                        'is_proposal' => $isProposal,
+                        'file' => $fileRaw !== '' ? ltrim($fileRaw, '/') : null,
+                        'status' => $status,
+                        'created_by' => $actor,
+                        'updated_by' => $actor,
+                    ]);
+                    $successCount++;
+                }
+
+                // Kolom kosong = jangan sentuh pembimbing/penguji yang sudah ada; kolom terisi =
+                // sinkronkan daftarnya (dosen lama yang tidak ada di daftar baru dihapus).
+                if ($kodePembimbingRaw !== '') {
+                    $this->syncTugasAkhirPembimbing($tugasAkhirRow, 'pembimbing', $pembimbingDosenIds, $actor);
+                }
+                if ($kodePengujiRaw !== '') {
+                    $this->syncTugasAkhirPembimbing($tugasAkhirRow, 'penguji', $pengujiDosenIds, $actor);
+                }
             }
 
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => "Import selesai. Berhasil: {$successCount}, Error: ".count($errors),
+                'message' => "Import selesai. Berhasil: {$successCount}, Diperbarui: {$updatedCount}, Error: ".count($errors),
                 'success_count' => $successCount,
+                'updated_count' => $updatedCount,
                 'error_count' => count($errors),
                 'errors' => $errors,
             ]);
@@ -307,6 +401,68 @@ class TugasAkhirController extends Controller
         $value = trim((string) $value);
 
         return $value !== '' ? $value : null;
+    }
+
+    /**
+     * Pecah daftar kode dosen: koma, titik koma, atau baris baru. Sama dengan
+     * KelasController::splitKodeDosenList.
+     *
+     * @return list<string>
+     */
+    private static function splitKodeDosenList(string $raw): array
+    {
+        $parts = preg_split('/[,;\n\r]+/', $raw, -1, PREG_SPLIT_NO_EMPTY);
+
+        return array_values(array_unique(array_filter(array_map('trim', $parts ?: []))));
+    }
+
+    /**
+     * Sinkronkan tugas_akhir_pembimbing untuk satu peran ('pembimbing' atau 'penguji') ke daftar
+     * dosen baru: dosen yang sudah ada (termasuk yang soft-deleted) dipulihkan/dibiarkan, dosen
+     * baru dibuat, dan dosen lama yang tidak ada lagi di daftar dihapus. Dipanggil untuk baris baru
+     * maupun baris yang di-update — untuk baris baru, query "dosen lama" otomatis kosong sehingga
+     * hasilnya sama dengan membuat baris pembimbing satu-satu. Pola sama dengan
+     * KelasController::syncKelasDosen.
+     *
+     * @param  list<int>  $dosenIds
+     */
+    private function syncTugasAkhirPembimbing(TugasAkhir $tugasAkhir, string $peran, array $dosenIds, string $actor): void
+    {
+        $dosenIds = array_values(array_unique(array_map('intval', $dosenIds)));
+
+        $rows = TugasAkhirPembimbing::withTrashed()
+            ->where('id_tugas_akhir', $tugasAkhir->id)
+            ->where('peran', $peran)
+            ->get();
+        $byDosen = $rows->keyBy('id_dosen');
+
+        foreach ($dosenIds as $idDosen) {
+            $existingRow = $byDosen->get($idDosen);
+            if ($existingRow) {
+                if ($existingRow->trashed()) {
+                    $existingRow->restore();
+                    $existingRow->update(['deleted_by' => null, 'updated_by' => $actor]);
+                }
+            } else {
+                TugasAkhirPembimbing::create([
+                    'id_tugas_akhir' => $tugasAkhir->id,
+                    'id_dosen' => $idDosen,
+                    'peran' => $peran,
+                    'created_by' => $actor,
+                    'updated_by' => $actor,
+                ]);
+            }
+        }
+
+        foreach ($rows as $row) {
+            if ($row->trashed()) {
+                continue;
+            }
+            if (! in_array((int) $row->id_dosen, $dosenIds, true)) {
+                $row->update(['deleted_by' => $actor, 'updated_by' => $actor]);
+                $row->delete();
+            }
+        }
     }
 
     public function show(Request $request, TugasAkhir $tugasAkhir): JsonResponse

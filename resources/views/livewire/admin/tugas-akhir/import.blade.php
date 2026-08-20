@@ -39,10 +39,13 @@
             <li>Download template Excel lewat tombol "Download Template" di atas.</li>
             <li>Isi data mengikuti kolom pada baris pertama template — kolom bertanda <span class="font-semibold">*</span> wajib diisi.</li>
             <li>NIM harus sudah terdaftar sebagai mahasiswa, dan Kode Semester harus sudah ada di sistem.</li>
-            <li>Satu mahasiswa tidak boleh punya dua data tugas akhir pada semester yang sama — baris seperti itu akan dilaporkan sebagai error, bukan diperbarui (modul ini tidak mendukung ubah/hapus lewat import).</li>
+            <li>Satu mahasiswa hanya boleh punya satu data tugas akhir per semester. Kalau baris di Excel cocok dengan data yang sudah ada (NIM + Kode Semester sama), data itu akan <span class="font-semibold">diperbarui</span>, bukan dibuat baru atau dilewati.</li>
+            <li>Saat memperbarui data yang sudah ada: Judul tetap wajib diisi, tapi kolom opsional (Status, Judul (English), Topik, Topik (English), Deskripsi, Is Proposal, File) yang dikosongkan akan <span class="font-semibold">mempertahankan nilai lama</span> — bukan menghapusnya. Isi kolom itu hanya kalau memang ingin mengubah nilainya.</li>
             <li>Import ini untuk mengisi data historis/hasil migrasi, jadi <span class="font-semibold">tidak</span> mensyaratkan KRS Tugas Akhir yang disetujui seperti pengajuan mandiri mahasiswa.</li>
-            <li>Status opsional (default "submitted" kalau kosong) — nilai yang diterima: draft, submitted, approved, rejected, returned.</li>
-            <li>Judul (English), Topik, Topik (English), dan Deskripsi semuanya opsional. Is Proposal opsional (true/false, default true kalau kosong).</li>
+            <li>Status opsional (default "submitted" untuk data baru kalau kosong) — nilai yang diterima: draft, submitted, approved, rejected, returned.</li>
+            <li>Judul (English), Topik, Topik (English), dan Deskripsi semuanya opsional. Is Proposal opsional (true/false, default true untuk data baru kalau kosong).</li>
+            <li>Kode Dosen Pembimbing dan Kode Dosen Penguji opsional — isi dengan kode dosen yang sudah ada di sistem, pisahkan dengan koma kalau lebih dari satu (mis. <span class="font-mono">DSN001, DSN002</span>). Kalau salah satu kode tidak ditemukan, seluruh baris tugas akhir itu gagal diimport, bukan cuma pembimbingnya. Kalau kolom ini dikosongkan pada data yang sudah ada, pembimbing/penguji yang sudah tercatat tidak diubah; kalau diisi, daftarnya menggantikan (sinkron) daftar yang lama.</li>
+            <li>Kolom File opsional dan <span class="font-semibold">bukan</span> upload berkas — isi dengan path relatif berkas di storage server (mis. <span class="font-mono">tugas-akhir/nama_file.pdf</span>). Path disimpan apa adanya tanpa dicek ke storage, jadi berkasnya boleh menyusul diunggah belakangan.</li>
             <li>Upload file (.xlsx atau .xls, maks 10MB) lalu klik "Proses Import".</li>
         </ol>
     </div>
@@ -80,10 +83,14 @@
         <div class="mt-6 rounded-2xl bg-white p-6 shadow-border">
             <h2 class="mb-4 text-sm font-semibold text-neutral-900">Hasil Import</h2>
 
-            <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div class="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div class="rounded-lg bg-emerald-50 px-4 py-3">
-                    <p class="text-xs font-semibold uppercase text-emerald-700">Berhasil</p>
+                    <p class="text-xs font-semibold uppercase text-emerald-700">Berhasil (Baru)</p>
                     <p class="mt-1 text-2xl font-semibold text-emerald-700">{{ $result['success_count'] }}</p>
+                </div>
+                <div class="rounded-lg bg-sky-50 px-4 py-3">
+                    <p class="text-xs font-semibold uppercase text-sky-700">Diperbarui</p>
+                    <p class="mt-1 text-2xl font-semibold text-sky-700">{{ $result['updated_count'] }}</p>
                 </div>
                 <div class="rounded-lg bg-amber-50 px-4 py-3">
                     <p class="text-xs font-semibold uppercase text-amber-700">Error</p>
