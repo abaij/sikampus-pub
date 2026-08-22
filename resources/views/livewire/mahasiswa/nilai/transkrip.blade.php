@@ -1,5 +1,9 @@
 @section('title', 'Transkrip Nilai — ' . config('app.name'))
-@section('header_title', 'Transkrip Nilai')
+
+{{-- Judul dirender di dalam elemen root komponen, bukan lewat @section('header_title')
+     + @section('page_actions'): tombol wire:click di dalam @section tidak pernah mendapat
+     wire:id di leluhurnya sehingga kliknya tidak terikat ke komponen. Alasan lengkapnya ada di
+     resources/views/livewire/mahasiswa/krs/index.blade.php. --}}
 
 @php
     $data = $this->data;
@@ -27,6 +31,25 @@
 @endphp
 
 <div class="space-y-6">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <h1 class="truncate text-2xl font-semibold tracking-tight text-neutral-900">Transkrip Nilai</h1>
+        </div>
+        @if (count($data['mata_kuliah']) > 0)
+            <div class="flex shrink-0 items-center gap-2">
+                <button
+                    type="button"
+                    wire:click="exportPdf"
+                    wire:loading.attr="disabled"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:opacity-50"
+                >
+                    <i data-lucide="file-down" class="h-4 w-4" aria-hidden="true"></i>
+                    Export PDF
+                </button>
+            </div>
+        @endif
+    </div>
+
     <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div class="rounded-2xl bg-white p-6 shadow-border">
             <div class="flex items-center gap-3">

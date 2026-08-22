@@ -9,6 +9,7 @@ use App\Models\Semester;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 class Index extends Component
@@ -16,6 +17,11 @@ class Index extends Component
     #[Locked]
     public int $dosenId;
 
+    /**
+     * Terikat ke query string `id_semester` supaya tautan "Kembali" dari halaman rincian bisa
+     * mengembalikan pengguna ke semester yang sedang dilihatnya, bukan selalu ke semester aktif.
+     */
+    #[Url(as: 'id_semester')]
     public string $filterSemester = '';
 
     public function mount(): void
@@ -24,7 +30,12 @@ class Index extends Component
         $this->dosenId = $dosen->id;
 
         $activeSemester = Semester::where('is_active', true)->whereNull('deleted_at')->first();
-        $this->filterSemester = $activeSemester ? (string) $activeSemester->id : '';
+        // Query string menang: kalau halaman dibuka lewat tautan "Kembali" yang membawa
+        // id_semester, Livewire sudah mengisi properti ini sebelum mount() jalan — jangan ditimpa
+        // dengan default semester aktif.
+        if ($this->filterSemester === '') {
+            $this->filterSemester = $activeSemester ? (string) $activeSemester->id : '';
+        }
     }
 
     #[Computed]

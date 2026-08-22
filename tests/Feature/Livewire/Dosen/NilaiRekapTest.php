@@ -5,6 +5,7 @@ use App\Models\Dosen;
 use App\Models\JenisPenilaian;
 use App\Models\Jenjang;
 use App\Models\Kelas;
+use App\Models\KelasDosen;
 use App\Models\Krs;
 use App\Models\Mahasiswa;
 use App\Models\Nilai;
@@ -12,6 +13,7 @@ use App\Models\NilaiRevisi;
 use App\Models\Notifikasi;
 use App\Models\Prodi;
 use App\Models\RentangNilai;
+use App\Models\Semester;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -35,7 +37,8 @@ it('calculates the final grade with the default rentang and stores it as not-yet
 
     $jenjang = Jenjang::factory()->create();
     $prodi = Prodi::factory()->create(['id_jenjang' => $jenjang->id]);
-    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_prodi' => $prodi->id]);
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_prodi' => $prodi->id, 'id_semester' => $semesterAktif->id]);
 
     RentangNilai::factory()->create(['id_jenjang' => $jenjang->id, 'nilai_huruf' => 'A', 'nilai_angka' => 4, 'nilai_rendah' => 85, 'nilai_tinggi' => 100]);
     RentangNilai::factory()->create(['id_jenjang' => $jenjang->id, 'nilai_huruf' => 'B', 'nilai_angka' => 3, 'nilai_rendah' => 70, 'nilai_tinggi' => 84.99]);
@@ -61,7 +64,8 @@ it('does not calculate a grade for a krs missing a component value for any jenis
 
     $jenjang = Jenjang::factory()->create();
     $prodi = Prodi::factory()->create(['id_jenjang' => $jenjang->id]);
-    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_prodi' => $prodi->id]);
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_prodi' => $prodi->id, 'id_semester' => $semesterAktif->id]);
     RentangNilai::factory()->create(['id_jenjang' => $jenjang->id, 'nilai_huruf' => 'A', 'nilai_angka' => 4, 'nilai_rendah' => 0, 'nilai_tinggi' => 100]);
 
     // Dua jenis penilaian ada di sistem, tapi mahasiswa cuma diisi satu komponen -> kalkulasi harus gagal untuknya.
@@ -84,7 +88,8 @@ it('applies a custom rentang range via the preview modal', function () {
 
     $jenjang = Jenjang::factory()->create();
     $prodi = Prodi::factory()->create(['id_jenjang' => $jenjang->id]);
-    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_prodi' => $prodi->id]);
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_prodi' => $prodi->id, 'id_semester' => $semesterAktif->id]);
     RentangNilai::factory()->create(['id_jenjang' => $jenjang->id, 'nilai_huruf' => 'A', 'nilai_angka' => 4, 'nilai_rendah' => 85, 'nilai_tinggi' => 100]);
 
     $jenisPenilaian = JenisPenilaian::factory()->create(['status' => 'manual', 'bobot' => 100]);
@@ -104,7 +109,8 @@ it('applies a custom rentang range via the preview modal', function () {
 it('finalizes nilai for the kelas and notifies each mahasiswa', function () {
     $dosenUser = dosenUser();
     $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
-    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id]);
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterAktif->id]);
 
     $userMhs = User::factory()->create(['role' => 'mahasiswa']);
     $mhs = Mahasiswa::factory()->create(['id_user' => $userMhs->id]);
@@ -120,7 +126,8 @@ it('finalizes nilai for the kelas and notifies each mahasiswa', function () {
 it('updates nilai without revisi via update-by-krs semantics', function () {
     $dosenUser = dosenUser();
     $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
-    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id]);
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterAktif->id]);
     $mhs = Mahasiswa::factory()->create();
     $krs = Krs::factory()->create(['id_mahasiswa' => $mhs->id, 'id_kelas' => $kelas->id]);
 
@@ -141,7 +148,8 @@ it('updates nilai without revisi via update-by-krs semantics', function () {
 it('stores a revisi entry and bumps the revisi counter when revisi is checked', function () {
     $dosenUser = dosenUser();
     $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
-    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id]);
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterAktif->id]);
     $mhs = Mahasiswa::factory()->create();
     $krs = Krs::factory()->create(['id_mahasiswa' => $mhs->id, 'id_kelas' => $kelas->id]);
     Nilai::factory()->create(['id_krs' => $krs->id, 'huruf_mutu' => 'C', 'angka_mutu' => 2, 'revisi' => 0]);
@@ -160,4 +168,108 @@ it('stores a revisi entry and bumps the revisi counter when revisi is checked', 
     expect($nilai->huruf_mutu)->toBe('A');
     expect($nilai->revisi)->toBe(1);
     expect(NilaiRevisi::where('id_krs', $krs->id)->count())->toBe(1);
+});
+
+it('lets a dosen listed only in kelas_dosen open the page', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    // Bukan PIC dan tanpa jadwal_dosen — hanya tercatat sebagai pengampu di kelas_dosen,
+    // sumber yang juga dipakai daftar kelas di halaman Nilai dan Arsip.
+    $kelas = Kelas::factory()->create();
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => false]);
+
+    Livewire::actingAs($dosenUser)
+        ->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->assertOk();
+});
+
+it('hides every editing action when the kelas is outside the active semester', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    Semester::factory()->active()->create();
+    $semesterLampau = Semester::factory()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterLampau->id]);
+
+    Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->assertOk()
+        ->assertSee('Hanya lihat')
+        ->assertDontSee('Custom Rentang Nilai')
+        ->assertDontSee('Kalkulasi')
+        ->assertDontSee('Finalisasi')
+        ->assertDontSee('openEditModal');
+});
+
+it('still shows the editing actions for a kelas in the active semester', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterAktif->id]);
+
+    Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->assertOk()
+        ->assertSee('Custom Rentang Nilai')
+        ->assertSee('Kalkulasi')
+        ->assertSee('Finalisasi')
+        ->assertDontSee('Hanya lihat');
+});
+
+it('rejects every mutating action on a kelas outside the active semester', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    Semester::factory()->active()->create();
+    $semesterLampau = Semester::factory()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterLampau->id]);
+
+    // Tombolnya memang disembunyikan, tapi aksi Livewire tetap bisa dipanggil dari sisi klien.
+    foreach (['openRentangModal', 'kalkulasiDenganRentangDefault', 'terapkanRentangCustom', 'finalisasi', 'saveEditNilai'] as $aksi) {
+        Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+            ->call($aksi)
+            ->assertForbidden();
+    }
+
+    Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->call('openEditModal', 1)
+        ->assertForbidden();
+});
+
+it('exports rincian nilai to xlsx and pdf for the active semester', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterAktif->id]);
+    $mhs = Mahasiswa::factory()->create();
+    Krs::factory()->create(['id_mahasiswa' => $mhs->id, 'id_kelas' => $kelas->id]);
+
+    Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->call('exportExcel')->assertFileDownloaded();
+    Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->call('exportPdf')->assertFileDownloaded();
+});
+
+it('still allows exporting a kelas outside the active semester', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    Semester::factory()->active()->create();
+    $semesterLampau = Semester::factory()->create(['kode' => '20242']);
+    $kelas = Kelas::factory()->create(['id_dosen_pic' => $dosen->id, 'id_semester' => $semesterLampau->id]);
+    $mhs = Mahasiswa::factory()->create();
+    Krs::factory()->create(['id_mahasiswa' => $mhs->id, 'id_kelas' => $kelas->id]);
+
+    // Tombol ekspor tetap ditawarkan walau semua aksi ubah sudah dikunci.
+    $component = Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->assertSee('Ekspor Excel')
+        ->assertSee('Ekspor PDF')
+        ->assertSee('Hanya lihat');
+
+    $berkas = $component->call('exportExcel')->assertFileDownloaded()->effects['download']['name'];
+    expect($berkas)->toContain('20242');
+
+    Livewire::actingAs($dosenUser)->test(Rekap::class, ['kelasId' => $kelas->id])
+        ->call('exportPdf')->assertFileDownloaded();
 });

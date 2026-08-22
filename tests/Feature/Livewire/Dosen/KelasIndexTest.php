@@ -82,3 +82,81 @@ it('filters kelas by the selected semester', function () {
     $component->set('filterSemester', '');
     expect($component->instance()->rows())->toHaveCount(2);
 });
+
+it('offers both export formats only when there is at least one kelas', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+    $semester = Semester::factory()->active()->create();
+
+    Livewire::actingAs($dosenUser)->test(Index::class)
+        ->assertDontSee('Ekspor Excel')
+        ->assertDontSee('Ekspor PDF');
+
+    $kelas = Kelas::factory()->create(['id_semester' => $semester->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+
+    Livewire::actingAs($dosenUser)->test(Index::class)
+        ->assertSee('Ekspor Excel')
+        ->assertSee('Ekspor PDF');
+});
+
+it('streams an xlsx download when exporting kelas to excel', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semester = Semester::factory()->active()->create();
+    $matkul = Matkul::factory()->create(['kode' => 'IF101', 'nama' => 'Algoritma', 'sks' => 3]);
+    $km = KurikulumMatkul::factory()->create(['id_matkul' => $matkul->id]);
+    $kelas = Kelas::factory()->create(['id_kurikulum_matkul' => $km->id, 'id_semester' => $semester->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+
+    Livewire::actingAs($dosenUser)->test(Index::class)
+        ->call('exportExcel')
+        ->assertFileDownloaded();
+});
+
+it('streams a pdf download when exporting kelas to pdf', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semester = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_semester' => $semester->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => false]);
+
+    Livewire::actingAs($dosenUser)->test(Index::class)
+        ->call('exportPdf')
+        ->assertFileDownloaded();
+});
+
+it('exports only the kelas of the selected semester', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterA = Semester::factory()->active()->create();
+    $semesterB = Semester::factory()->create();
+
+    $matkulA = Matkul::factory()->create(['kode' => 'IF101', 'nama' => 'Algoritma']);
+    $matkulB = Matkul::factory()->create(['kode' => 'IF202', 'nama' => 'Basis Data']);
+    $kelasA = Kelas::factory()->create([
+        'id_kurikulum_matkul' => KurikulumMatkul::factory()->create(['id_matkul' => $matkulA->id])->id,
+        'id_semester' => $semesterA->id,
+    ]);
+    $kelasB = Kelas::factory()->create([
+        'id_kurikulum_matkul' => KurikulumMatkul::factory()->create(['id_matkul' => $matkulB->id])->id,
+        'id_semester' => $semesterB->id,
+    ]);
+
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelasA->id, 'is_pic' => true]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelasB->id, 'is_pic' => false]);
+
+    // Semester aktif (A) yang terpilih saat mount — hanya kelas A yang boleh ikut terekspor.
+    $component = Livewire::actingAs($dosenUser)->test(Index::class);
+    $isiPdf = $component->call('exportPdf')->effects['download']['content'] ?? '';
+    $isiPdf = base64_decode($isiPdf);
+
+    expect($isiPdf)->not->toBe('');
+    expect(strlen($isiPdf))->toBeGreaterThan(500);
+
+    // Barisnya sendiri lebih mudah diperiksa lewat data sumber ekspor.
+    expect($component->instance()->rows())->toHaveCount(1);
+});

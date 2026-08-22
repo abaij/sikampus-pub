@@ -1,5 +1,7 @@
 <?php
 
+use App\Livewire\Mahasiswa\Nilai\Semester as NilaiSemester;
+use App\Livewire\Mahasiswa\Nilai\Transkrip as NilaiTranskrip;
 use App\Models\Kelas;
 use App\Models\Krs;
 use App\Models\KurikulumMatkul;
@@ -8,6 +10,7 @@ use App\Models\Matkul;
 use App\Models\Nilai;
 use App\Models\Semester;
 use App\Models\User;
+use Livewire\Livewire;
 
 function nilaiMahasiswaUser(): array
 {
@@ -92,4 +95,73 @@ it('excludes courses without an approved krs or without a final huruf mutu from 
     $response->assertSee('IF201');
     $response->assertDontSee('IF202');
     $response->assertDontSee('IF203');
+});
+
+it('shows an export button on the nilai semester page when there is data', function () {
+    [$user, $mahasiswa] = nilaiMahasiswaUser();
+    $semester = Semester::factory()->create();
+    buatKrsDenganNilai($mahasiswa, $semester, ['kode' => 'IF101', 'nama' => 'Algoritma', 'sks' => 3], [
+        'angka_mutu' => 4, 'huruf_mutu' => 'A', 'is_final' => true,
+    ]);
+
+    $this->actingAs($user)->get(route('mahasiswa.nilai.semester'))
+        ->assertOk()
+        ->assertSee('Export PDF')
+        ->assertSee('wire:click="exportPdf"', false);
+});
+
+it('hides the export button when the mahasiswa has no nilai at all', function () {
+    [$user] = nilaiMahasiswaUser();
+
+    $this->actingAs($user)->get(route('mahasiswa.nilai.semester'))
+        ->assertOk()
+        ->assertDontSee('Export PDF');
+});
+
+it('streams a pdf download when exporting nilai semester', function () {
+    [$user, $mahasiswa] = nilaiMahasiswaUser();
+    $semester = Semester::factory()->create();
+    buatKrsDenganNilai($mahasiswa, $semester, ['kode' => 'IF101', 'nama' => 'Algoritma', 'sks' => 3], [
+        'angka_mutu' => 4, 'huruf_mutu' => 'A', 'is_final' => true,
+    ]);
+
+    Livewire::actingAs($user)->test(NilaiSemester::class)
+        ->call('exportPdf')
+        ->assertFileDownloaded();
+});
+
+it('shows an export button on the transkrip page when there is data', function () {
+    [$user, $mahasiswa] = nilaiMahasiswaUser();
+    $semester = Semester::factory()->create();
+    buatKrsDenganNilai($mahasiswa, $semester, ['kode' => 'IF101', 'nama' => 'Algoritma', 'sks' => 3], [
+        'angka_mutu' => 4, 'huruf_mutu' => 'A', 'is_final' => true,
+    ]);
+
+    $this->actingAs($user)->get(route('mahasiswa.nilai.transkrip'))
+        ->assertOk()
+        ->assertSee('Export PDF')
+        ->assertSee('wire:click="exportPdf"', false);
+});
+
+it('hides the transkrip export button when no course has a final grade yet', function () {
+    [$user, $mahasiswa] = nilaiMahasiswaUser();
+    $semester = Semester::factory()->create();
+    // Sudah disetujui KRS-nya tapi belum ada nilai — transkrip tetap kosong.
+    buatKrsDenganNilai($mahasiswa, $semester, ['kode' => 'IF101', 'nama' => 'Algoritma', 'sks' => 3], null);
+
+    $this->actingAs($user)->get(route('mahasiswa.nilai.transkrip'))
+        ->assertOk()
+        ->assertDontSee('Export PDF');
+});
+
+it('streams a pdf download when exporting transkrip', function () {
+    [$user, $mahasiswa] = nilaiMahasiswaUser();
+    $semester = Semester::factory()->create();
+    buatKrsDenganNilai($mahasiswa, $semester, ['kode' => 'IF101', 'nama' => 'Algoritma', 'sks' => 3], [
+        'angka_mutu' => 4, 'huruf_mutu' => 'A', 'is_final' => true,
+    ]);
+
+    Livewire::actingAs($user)->test(NilaiTranskrip::class)
+        ->call('exportPdf')
+        ->assertFileDownloaded();
 });

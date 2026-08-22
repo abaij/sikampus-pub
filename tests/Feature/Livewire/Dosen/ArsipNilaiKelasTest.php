@@ -5,6 +5,7 @@ use App\Models\Dosen;
 use App\Models\Jadwal;
 use App\Models\JadwalDosen;
 use App\Models\Kelas;
+use App\Models\KelasDosen;
 use App\Models\Krs;
 use App\Models\Mahasiswa;
 use App\Models\Nilai;
@@ -82,4 +83,18 @@ it('rejects revising a krs that does not belong to this kelas', function () {
         ->set('revisiHurufMutu', 'A')
         ->call('saveRevisi')
         ->assertStatus(404);
+});
+
+it('lets a dosen listed only in kelas_dosen open the page', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    // Bukan PIC dan tanpa jadwal_dosen — hanya tercatat sebagai pengampu di kelas_dosen,
+    // sumber yang juga dipakai daftar kelas di halaman Nilai dan Arsip.
+    $kelas = Kelas::factory()->create();
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => false]);
+
+    Livewire::actingAs($dosenUser)
+        ->test(NilaiKelas::class, ['id' => $kelas->id])
+        ->assertOk();
 });

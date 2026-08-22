@@ -1,6 +1,6 @@
 @section('title', 'Jadwal Mengajar — ' . config('app.name'))
 @section('header_title', 'Jadwal Mengajar')
-@section('header_subtitle', 'Jadwal mengajar Anda, dikelompokkan per kelas kuliah. Untuk daftar per mata kuliah, buka Kelas Mata Kuliah.')
+@section('header_subtitle', 'Kelas yang Anda ampu beserta jadwal mengajarnya. Klik satu kelas untuk membuka rincian slot jadwalnya.')
 
 <div class="space-y-4">
     <div class="flex justify-end">
@@ -18,7 +18,11 @@
 
     @if ($groups->isEmpty())
         <div class="rounded-2xl bg-white px-4 py-10 text-center text-sm text-neutral-500 shadow-border">
-            Belum ada jadwal mengajar.
+            @if ($filterSemester !== '')
+                Anda tidak mengampu kelas pada semester yang dipilih.
+            @else
+                Anda belum tercatat mengampu kelas mana pun.
+            @endif
         </div>
     @else
         <div class="space-y-3">
@@ -41,12 +45,21 @@
                                 @if ($kelas->kelompokKelas)
                                     · {{ $kelas->kelompokKelas->nama }}
                                 @endif
-                                · {{ $group['rows']->count() }} {{ Str::plural('slot', $group['rows']->count()) }} jadwal
+                                @if ($group['rows']->isEmpty())
+                                    · <span class="text-amber-700">belum dijadwalkan</span>
+                                @else
+                                    · {{ $group['rows']->count() }} {{ Str::plural('slot', $group['rows']->count()) }} jadwal
+                                @endif
                             </p>
                         </div>
                         <i data-lucide="chevron-down" class="h-4 w-4 shrink-0 text-neutral-400 transition group-open:rotate-180" aria-hidden="true"></i>
                     </summary>
 
+                    @if ($group['rows']->isEmpty())
+                        <div class="border-t border-neutral-100 px-5 py-6 text-center text-sm text-neutral-500">
+                            Tidak ada jadwal mengajar di semester ini
+                        </div>
+                    @else
                     <div class="overflow-x-auto border-t border-neutral-100">
                         <table class="w-full text-left text-sm">
                             <thead class="bg-neutral-50 text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -59,13 +72,12 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-neutral-100">
-                                @foreach ($group['rows'] as $jadwalDosen)
+                                @foreach ($group['rows'] as $jadwal)
                                     @php
-                                        $jadwal = $jadwalDosen->jadwal;
                                         $jamMulai = $jadwal->jam_mulai ? substr($jadwal->jam_mulai, 0, 5) : '—';
                                         $jamSelesai = $jadwal->jam_selesai ? substr($jadwal->jam_selesai, 0, 5) : null;
                                     @endphp
-                                    <tr wire:key="jadwal-{{ $jadwalDosen->id }}">
+                                    <tr wire:key="jadwal-{{ $jadwal->id }}">
                                         <td class="px-4 py-3 font-medium text-neutral-900">
                                             {{ $jadwal->hari ? ucfirst($jadwal->hari) : '—' }}
                                             @if ($jadwal->tanggal)
@@ -91,6 +103,7 @@
                             </tbody>
                         </table>
                     </div>
+                    @endif
                 </details>
             @endforeach
         </div>

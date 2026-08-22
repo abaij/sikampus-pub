@@ -5,6 +5,8 @@ namespace App\Livewire\Dosen\Nilai;
 use App\Models\Dosen;
 use App\Models\JadwalDosen;
 use App\Models\Kelas;
+use App\Models\KelasDosen;
+use App\Models\Semester;
 use App\Services\NilaiKelasDataService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -34,6 +36,16 @@ class Input extends Component
         abort_unless($kelas, 404, 'Kelas tidak ditemukan.');
         abort_unless($this->dosenHasAccess($kelas), 403, 'Anda tidak memiliki akses ke kelas ini.');
 
+        // Input nilai hanya untuk semester yang sedang berjalan. Tombolnya memang sudah
+        // disembunyikan di daftar kelas, tapi penguncian sebenarnya harus di sini — tanpa ini
+        // nilai semester lampau masih bisa diubah dengan mengetik URL-nya langsung.
+        $semesterAktif = Semester::where('is_active', true)->whereNull('deleted_at')->first();
+        abort_unless(
+            $semesterAktif && (int) $kelas->id_semester === (int) $semesterAktif->id,
+            403,
+            'Input nilai hanya tersedia untuk kelas pada semester aktif.'
+        );
+
         $this->kelasId = $kelasId;
 
         $jenisPenilaianPertama = $this->data['jenis_penilaian'][0]['id'] ?? null;
@@ -43,9 +55,18 @@ class Input extends Component
         }
     }
 
+    /**
+     * Akses dosen ke satu kelas — sama persis dengan Kehadiran\RekapKelas::dosenHasAccess:
+     * PIC kelas, tercatat sebagai pengampu di kelas_dosen, atau punya jadwal_dosen aktif.
+     * kelas_dosen wajib ikut, karena daftar kelas di Nilai/Arsip juga bersumber dari sana.
+     */
     private function dosenHasAccess(Kelas $kelas): bool
     {
         if ((int) $kelas->id_dosen_pic === $this->dosenId) {
+            return true;
+        }
+
+        if (KelasDosen::where('id_dosen', $this->dosenId)->where('id_kelas', $kelas->id)->whereNull('deleted_at')->exists()) {
             return true;
         }
 

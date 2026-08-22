@@ -5,6 +5,7 @@ namespace App\Livewire\Dosen\Arsip;
 use App\Models\Dosen;
 use App\Models\JadwalDosen;
 use App\Models\Kelas;
+use App\Models\KelasDosen;
 use App\Models\Krs;
 use App\Models\Nilai;
 use App\Models\NilaiRevisi;
@@ -51,9 +52,18 @@ class NilaiKelas extends Component
     /**
      * Sama persis dengan NilaiController::getMahasiswaByKelas / storeRevisiNilai (cek akses).
      */
+    /**
+     * Akses dosen ke satu kelas — sama persis dengan Kehadiran\RekapKelas::dosenHasAccess:
+     * PIC kelas, tercatat sebagai pengampu di kelas_dosen, atau punya jadwal_dosen aktif.
+     * kelas_dosen wajib ikut, karena daftar kelas di Nilai/Arsip juga bersumber dari sana.
+     */
     private function dosenHasAccess(Kelas $kelas): bool
     {
         if ((int) $kelas->id_dosen_pic === $this->dosenId) {
+            return true;
+        }
+
+        if (KelasDosen::where('id_dosen', $this->dosenId)->where('id_kelas', $kelas->id)->whereNull('deleted_at')->exists()) {
             return true;
         }
 

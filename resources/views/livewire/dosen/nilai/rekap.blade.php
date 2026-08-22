@@ -2,7 +2,7 @@
 @section('header_title', 'Rincian Nilai')
 
 @section('breadcrumb')
-    <a href="{{ route('dosen.nilai') }}" class="inline-flex items-center gap-2 text-sm font-medium text-sky-600 hover:text-sky-700">
+    <a href="{{ route('dosen.nilai', ['id_semester' => $this->kelas->id_semester]) }}" class="inline-flex items-center gap-2 text-sm font-medium text-sky-600 hover:text-sky-700">
         <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
         Kembali
     </a>
@@ -13,6 +13,9 @@
     $km = $kelas->kurikulumMatkul;
     $data = $this->data;
     $rentangTersedia = ! empty($data['rentang_nilai']);
+    // Kelas di luar semester aktif hanya bisa dilihat; guard sesungguhnya ada di
+    // Dosen\Nilai\Rekap::pastikanBolehUbah(), ini sekadar menyembunyikan tombolnya.
+    $bolehUbah = $this->bolehUbah;
 @endphp
 
 <div class="space-y-4">
@@ -29,37 +32,69 @@
             <p class="mt-1 text-sm text-neutral-500">Kelas: {{ $kelas->kode }} | SKS: {{ $km?->sksLabel() ?? 0 }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
+            {{-- Ekspor berlaku untuk semua semester; yang dibatasi semester aktif hanya aksi
+                 yang mengubah data (lihat Dosen\Nilai\Rekap::pastikanBolehUbah). --}}
             <button
                 type="button"
-                wire:click="openRentangModal"
-                @if (! $rentangTersedia) disabled @endif
-                title="Kalkulasi dengan Custom Rentang Nilai"
-                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-                <i data-lucide="sliders-horizontal" class="h-4 w-4" aria-hidden="true"></i>
-                Custom Rentang Nilai
-            </button>
-            <button
-                type="button"
-                wire:click="kalkulasiDenganRentangDefault"
+                wire:click="exportExcel"
                 wire:loading.attr="disabled"
-                wire:confirm="Apakah Anda yakin ingin melakukan kalkulasi nilai akhir?"
-                title="Kalkulasi dengan Rentang Default"
-                class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                wire:target="exportExcel"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:opacity-50"
             >
-                <i data-lucide="calculator" class="h-4 w-4" aria-hidden="true"></i>
-                Kalkulasi
+                <i data-lucide="file-spreadsheet" class="h-4 w-4 text-neutral-400" aria-hidden="true"></i>
+                <span wire:loading.remove wire:target="exportExcel">Ekspor Excel</span>
+                <span wire:loading wire:target="exportExcel">Memproses...</span>
             </button>
             <button
                 type="button"
-                wire:click="finalisasi"
+                wire:click="exportPdf"
                 wire:loading.attr="disabled"
-                wire:confirm="Dengan memfinalisasi, nilai di kelas ini akan dianggap final dan akan tampil di akun mahasiswa. Apakah Anda yakin?"
-                class="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
+                wire:target="exportPdf"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:opacity-50"
             >
-                <i data-lucide="lock" class="h-4 w-4" aria-hidden="true"></i>
-                Finalisasi
+                <i data-lucide="file-down" class="h-4 w-4 text-neutral-400" aria-hidden="true"></i>
+                <span wire:loading.remove wire:target="exportPdf">Ekspor PDF</span>
+                <span wire:loading wire:target="exportPdf">Memproses...</span>
             </button>
+
+            @if ($bolehUbah)
+                <button
+                    type="button"
+                    wire:click="openRentangModal"
+                    @if (! $rentangTersedia) disabled @endif
+                    title="Kalkulasi dengan Custom Rentang Nilai"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    <i data-lucide="sliders-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                    Custom Rentang Nilai
+                </button>
+                <button
+                    type="button"
+                    wire:click="kalkulasiDenganRentangDefault"
+                    wire:loading.attr="disabled"
+                    wire:confirm="Apakah Anda yakin ingin melakukan kalkulasi nilai akhir?"
+                    title="Kalkulasi dengan Rentang Default"
+                    class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                >
+                    <i data-lucide="calculator" class="h-4 w-4" aria-hidden="true"></i>
+                    Kalkulasi
+                </button>
+                <button
+                    type="button"
+                    wire:click="finalisasi"
+                    wire:loading.attr="disabled"
+                    wire:confirm="Dengan memfinalisasi, nilai di kelas ini akan dianggap final dan akan tampil di akun mahasiswa. Apakah Anda yakin?"
+                    class="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-50"
+                >
+                    <i data-lucide="lock" class="h-4 w-4" aria-hidden="true"></i>
+                    Finalisasi
+                </button>
+            @else
+                <span class="inline-flex items-center gap-2 rounded-lg bg-neutral-100 px-3 py-2 text-xs font-medium text-neutral-600">
+                    <i data-lucide="eye" class="h-4 w-4 text-neutral-400" aria-hidden="true"></i>
+                    Hanya lihat — bukan semester aktif
+                </span>
+            @endif
         </div>
     </div>
 
@@ -129,9 +164,13 @@
                                 </td>
                                 <td class="px-4 py-3 text-center text-neutral-900">{{ $mhs['nilai']?->revisi ?? 0 }}</td>
                                 <td class="px-4 py-3 text-center">
-                                    <button type="button" wire:click="openEditModal({{ $mhs['id_krs'] }})" title="Input atau edit nilai" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-neutral-700 shadow-border hover:bg-neutral-50">
-                                        <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
-                                    </button>
+                                    @if ($bolehUbah)
+                                        <button type="button" wire:click="openEditModal({{ $mhs['id_krs'] }})" title="Input atau edit nilai" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-neutral-700 shadow-border hover:bg-neutral-50">
+                                            <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                                        </button>
+                                    @else
+                                        <span class="text-neutral-400">—</span>
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach

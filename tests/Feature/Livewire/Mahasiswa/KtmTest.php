@@ -64,12 +64,12 @@ it('lets a mahasiswa create their own ktm', function () {
 
     Livewire::actingAs($user)
         ->test(KtmLivewire::class)
-        ->set('nomorKtmInput', 'KTM-999')
         ->call('buatKtm')
         ->assertHasNoErrors();
 
     $ktm = Ktm::where('id_mahasiswa', $mahasiswa->id)->firstOrFail();
-    expect($ktm->nomor_ktm)->toBe('KTM-999');
+    // Nomor KTM diisi petugas lewat panel admin, bukan oleh mahasiswa saat membuat KTM.
+    expect($ktm->nomor_ktm)->toBeNull();
     expect($ktm->status)->toBe('active');
     Storage::disk('public')->assertExists($ktm->file);
 });
@@ -112,4 +112,12 @@ it('only shows the ktm belonging to the authenticated mahasiswa', function () {
         ->assertDontSee('OTHER');
 
     expect($otherKtm->id_mahasiswa)->not->toBe($mahasiswa->id);
+});
+
+it('does not offer a nomor ktm field to the mahasiswa', function () {
+    [$user] = ktmMahasiswaUser();
+
+    $this->actingAs($user)->get(route('mahasiswa.ktm'))
+        ->assertOk()
+        ->assertDontSee('Nomor KTM (opsional)');
 });

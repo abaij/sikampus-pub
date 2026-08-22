@@ -29,16 +29,6 @@
                     <p class="mt-1 text-sm text-neutral-500">Buat KTM Anda sekarang — gambar akan dibuat otomatis berdasarkan data NIM, nama, dan prodi Anda.</p>
                 </div>
 
-                <div class="w-full max-w-xs">
-                    <label class="mb-1.5 block text-left text-sm font-medium text-neutral-700">Nomor KTM (opsional)</label>
-                    <input
-                        type="text"
-                        wire:model="nomorKtmInput"
-                        class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('nomorKtmInput') ring-2 ring-red-500 @enderror shadow-border"
-                    />
-                    @error('nomorKtmInput') <p class="mt-1.5 text-left text-sm text-red-600">{{ $message }}</p> @enderror
-                </div>
-
                 <button
                     type="button"
                     wire:click="buatKtm"

@@ -7,19 +7,29 @@ use App\Models\Dosen;
 use App\Models\JadwalDosen;
 use App\Models\JenisPenilaian;
 use App\Models\Kelas;
+use App\Models\KelasDosen;
 use App\Models\Krs;
 use App\Models\Mahasiswa;
 use App\Models\Nilai;
 use App\Models\NilaiRevisi;
 use App\Models\Notifikasi;
 use App\Models\RentangNilai;
+use App\Models\Semester;
 use App\Services\NilaiKelasDataService;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Locked;
 use Livewire\Component;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class Rekap extends Component
 {
@@ -61,9 +71,18 @@ class Rekap extends Component
         $this->kelasId = $kelasId;
     }
 
+    /**
+     * Akses dosen ke satu kelas — sama persis dengan Kehadiran\RekapKelas::dosenHasAccess:
+     * PIC kelas, tercatat sebagai pengampu di kelas_dosen, atau punya jadwal_dosen aktif.
+     * kelas_dosen wajib ikut, karena daftar kelas di Nilai/Arsip juga bersumber dari sana.
+     */
     private function dosenHasAccess(Kelas $kelas): bool
     {
         if ((int) $kelas->id_dosen_pic === $this->dosenId) {
+            return true;
+        }
+
+        if (KelasDosen::where('id_dosen', $this->dosenId)->where('id_kelas', $kelas->id)->whereNull('deleted_at')->exists()) {
             return true;
         }
 
@@ -76,13 +95,36 @@ class Rekap extends Component
     #[Computed]
     public function kelas(): Kelas
     {
-        return Kelas::with(['kurikulumMatkul.matkul', 'prodi'])->findOrFail($this->kelasId);
+        return Kelas::with(['kurikulumMatkul.matkul', 'prodi', 'semester'])->findOrFail($this->kelasId);
     }
 
     #[Computed]
     public function data(): array
     {
         return NilaiKelasDataService::build($this->kelas);
+    }
+
+    /**
+     * Rekap kelas di luar semester aktif bersifat baca saja: nilai semester lampau tidak boleh
+     * dikalkulasi ulang, direvisi, atau difinalisasi dari sini. Aturannya sama dengan tombol
+     * Input Nilai di daftar kelas (Dosen\Nilai\Index) dan penguncian di Dosen\Nilai\Input.
+     */
+    #[Computed]
+    public function bolehUbah(): bool
+    {
+        $semesterAktif = Semester::where('is_active', true)->whereNull('deleted_at')->first();
+
+        return $semesterAktif !== null
+            && (int) $this->kelas->id_semester === (int) $semesterAktif->id;
+    }
+
+    /**
+     * Dipanggil di awal setiap aksi yang mengubah data — menyembunyikan tombolnya saja tidak
+     * cukup, karena aksi Livewire bisa dipanggil langsung dari sisi klien.
+     */
+    private function pastikanBolehUbah(): void
+    {
+        abort_unless($this->bolehUbah, 403, 'Nilai semester ini sudah tidak bisa diubah karena bukan semester aktif.');
     }
 
     public function jumlahTotalNilai(Collection $nilaiKomponen): ?float
@@ -92,6 +134,8 @@ class Rekap extends Component
 
     public function openRentangModal(): void
     {
+        $this->pastikanBolehUbah();
+
         $this->rentangForm = collect($this->data['rentang_nilai'])->map(fn (RentangNilai $r) => [
             'nilai_huruf' => $r->nilai_huruf,
             'nilai_angka' => (float) $r->nilai_angka,
@@ -112,6 +156,8 @@ class Rekap extends Component
      */
     public function kalkulasiDenganRentangDefault(): void
     {
+        $this->pastikanBolehUbah();
+
         $kelas = $this->kelas;
         $jenjang = $kelas->prodi?->jenjang;
         abort_if(! $jenjang, 400, 'Jenjang tidak ditemukan untuk kelas ini.');
@@ -141,6 +187,8 @@ class Rekap extends Component
      */
     public function terapkanRentangCustom(): void
     {
+        $this->pastikanBolehUbah();
+
         if ($this->rentangForm === []) {
             $this->addError('rentangForm', 'Rentang nilai kosong. Isi dari rentang default terlebih dahulu.');
 
@@ -240,6 +288,8 @@ class Rekap extends Component
      */
     public function finalisasi(): void
     {
+        $this->pastikanBolehUbah();
+
         $krsIds = Krs::where('id_kelas', $this->kelasId)->whereNull('deleted_at')->pluck('id')->all();
         abort_if($krsIds === [], 400, 'Tidak ada mahasiswa di kelas ini.');
 
@@ -265,6 +315,8 @@ class Rekap extends Component
 
     public function openEditModal(int $idKrs): void
     {
+        $this->pastikanBolehUbah();
+
         $this->resetValidation();
 
         $mhs = collect($this->data['mahasiswa'])->firstWhere('id_krs', $idKrs);
@@ -313,6 +365,8 @@ class Rekap extends Component
      */
     public function saveEditNilai(): void
     {
+        $this->pastikanBolehUbah();
+
         $this->validate([
             'editHurufMutu' => ['required', 'string', 'max:10'],
             'editAngkaMutu' => ['nullable', 'numeric', 'min:0', 'max:999.99'],
@@ -372,6 +426,216 @@ class Rekap extends Component
 
         unset($this->data);
         $this->closeEditModal();
+    }
+
+    /**
+     * Judul kolom rincian nilai — kolom komponen penilaiannya dinamis, mengikuti jenis penilaian
+     * yang berlaku untuk kelas ini (beserta bobotnya), persis seperti tabel di layar.
+     *
+     * @return array<int, string>
+     */
+    private function exportHeaders(): array
+    {
+        $headers = ['No.', 'NIM', 'Nama'];
+
+        foreach ($this->data['jenis_penilaian'] as $jp) {
+            $headers[] = $jp['kode'].' ('.rtrim(rtrim(number_format((float) $jp['bobot'], 2, '.', ''), '0'), '.').'%)';
+        }
+
+        return array_merge($headers, ['Jumlah Total Nilai', 'Nilai Akhir', 'Huruf Mutu', 'Status', 'Revisi']);
+    }
+
+    /**
+     * Baris siap cetak untuk kedua format ekspor. Ekspor sengaja TIDAK dibatasi semester aktif —
+     * mencetak rincian nilai semester lampau justru kebutuhan utamanya (lihat bolehUbah(), yang
+     * hanya mengatur aksi yang mengubah data).
+     *
+     * @return array<int, array<int, string|int|float>>
+     */
+    private function exportRows(): array
+    {
+        $data = $this->data;
+        $hasil = [];
+
+        foreach ($data['mahasiswa'] as $idx => $mhs) {
+            $baris = [$idx + 1, (string) $mhs['nim'], (string) $mhs['nama']];
+
+            foreach ($data['jenis_penilaian'] as $jp) {
+                $komponen = $mhs['nilai_komponen']->get($jp['id']);
+                $baris[] = $komponen
+                    ? $komponen->nilai.($jp['status'] === 'otomatis' ? '%' : '')
+                    : '-';
+            }
+
+            $jumlahTotal = $this->jumlahTotalNilai($mhs['nilai_komponen']);
+            $nilai = $mhs['nilai'];
+
+            // Dicast ke float supaya masuk Excel sebagai angka, bukan teks (NIM sengaja tetap
+            // string agar nol di depannya tidak hilang).
+            $baris[] = $jumlahTotal !== null ? (float) $jumlahTotal : '-';
+            $baris[] = $nilai?->angka_mutu !== null ? (float) $nilai->angka_mutu : '-';
+            $baris[] = $nilai?->huruf_mutu ?? '-';
+            $baris[] = $nilai ? ($nilai->is_final ? 'Final' : 'Belum Final') : '-';
+            $baris[] = (int) ($nilai?->revisi ?? 0);
+
+            $hasil[] = $baris;
+        }
+
+        return $hasil;
+    }
+
+    /**
+     * Baris identitas di atas tabel, dipakai kedua format.
+     *
+     * @return array<int, string>
+     */
+    private function exportInfo(): array
+    {
+        $kelas = $this->kelas;
+        $km = $kelas->kurikulumMatkul;
+        $dosen = Dosen::find($this->dosenId);
+
+        $namaDosen = $dosen ? trim(
+            ($dosen->gelar_depan ? $dosen->gelar_depan.' ' : '').
+            ($dosen->nama ?? '').
+            ($dosen->gelar_belakang ? ', '.$dosen->gelar_belakang : '')
+        ) : '';
+
+        return [
+            'Mata kuliah: '.($km?->kodeMatkulLabel() ?? '-').' - '.($km?->namaMatkulLabel() ?? '-'),
+            'Kelas: '.($kelas->kode ?: '-').' | SKS: '.($km?->sksLabel() ?? 0).' | Prodi: '.($kelas->prodi?->nama ?? '-'),
+            'Semester: '.($kelas->semester
+                ? trim($kelas->semester->nama.($kelas->semester->kode ? ' ('.$kelas->semester->kode.')' : ''))
+                : '-'),
+            'Dosen: '.($namaDosen !== '' ? $namaDosen : '-'),
+            'Diekspor: '.now()->format('Y-m-d H:i:s'),
+        ];
+    }
+
+    private function namaBerkas(string $ekstensi): string
+    {
+        $km = $this->kelas->kurikulumMatkul;
+        $bagian = array_filter([
+            'Rincian_Nilai',
+            $km?->kodeMatkulLabel(),
+            $this->kelas->kode ?: null,
+            $this->kelas->semester?->kode,
+            now()->format('Y-m-d'),
+        ]);
+
+        return preg_replace('/\s+/', '_', implode('_', $bagian)).'.'.$ekstensi;
+    }
+
+    public function exportExcel(): StreamedResponse
+    {
+        $headers = $this->exportHeaders();
+        $rows = $this->exportRows();
+        $kolomTerakhir = Coordinate::stringFromColumnIndex(count($headers));
+
+        $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Rincian Nilai');
+
+        $sheet->setCellValue('A1', 'Rincian nilai kelas');
+        $sheet->mergeCells('A1:'.$kolomTerakhir.'1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $barisInfo = 2;
+        foreach ($this->exportInfo() as $info) {
+            $sheet->setCellValue('A'.$barisInfo, $info);
+            $sheet->mergeCells('A'.$barisInfo.':'.$kolomTerakhir.$barisInfo);
+            $barisInfo++;
+        }
+
+        $headerRow = $barisInfo + 1;
+        $sheet->fromArray([$headers], null, 'A'.$headerRow);
+        $sheet->getStyle('A'.$headerRow.':'.$kolomTerakhir.$headerRow)->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '4472C4']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        if ($rows !== []) {
+            // strictNullComparison = true: tanpa ini fromArray() membandingkan longgar dengan
+            // $nullValue, sehingga sel bernilai 0 (SKS/revisi/nilai nol) dianggap null dan
+            // dilewati — kolomnya jadi kosong di Excel padahal terisi di layar dan di PDF.
+            $sheet->fromArray($rows, null, 'A'.($headerRow + 1), true);
+        } else {
+            $sheet->setCellValue('A'.($headerRow + 1), 'Tidak ada mahasiswa di kelas ini.');
+            $sheet->mergeCells('A'.($headerRow + 1).':'.$kolomTerakhir.($headerRow + 1));
+        }
+
+        foreach (range(1, count($headers)) as $index) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($index))->setAutoSize(true);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $this->namaBerkas('xlsx'), [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    public function exportPdf(): StreamedResponse
+    {
+        $headers = $this->exportHeaders();
+        $rows = $this->exportRows();
+
+        $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+        body { font-family: DejaVu Sans, sans-serif; font-size: 8.5pt; }
+        .title { text-align: center; font-size: 13pt; font-weight: bold; margin-bottom: 6px; }
+        .info { text-align: center; margin-bottom: 2px; font-size: 8.5pt; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th { background-color: #4472C4; color: white; padding: 4px; border: 1px solid #000; text-align: center; font-size: 8pt; }
+        td { padding: 4px; border: 1px solid #000; }
+        td.num { text-align: center; }
+        .footer { margin-top: 16px; text-align: right; font-size: 8pt; }
+        </style></head><body>';
+
+        $html .= '<div class="title">RINCIAN NILAI KELAS</div>';
+        foreach ($this->exportInfo() as $info) {
+            $html .= '<div class="info">'.htmlspecialchars($info).'</div>';
+        }
+
+        if ($rows === []) {
+            $html .= '<p>Tidak ada mahasiswa di kelas ini.</p>';
+        } else {
+            $html .= '<table><thead><tr>';
+            foreach ($headers as $header) {
+                $html .= '<th>'.htmlspecialchars($header).'</th>';
+            }
+            $html .= '</tr></thead><tbody>';
+
+            foreach ($rows as $row) {
+                $html .= '<tr>';
+                foreach ($row as $i => $sel) {
+                    // Hanya NIM dan Nama yang rata kiri; kolom nilai lebih mudah dibaca rata tengah.
+                    $kelasSel = in_array($i, [1, 2], true) ? '' : ' class="num"';
+                    $html .= '<td'.$kelasSel.'>'.htmlspecialchars((string) $sel).'</td>';
+                }
+                $html .= '</tr>';
+            }
+            $html .= '</tbody></table>';
+        }
+
+        $html .= '<div class="footer">Dicetak: '.now()->format('d/m/Y H:i').'</div></body></html>';
+
+        $options = new Options;
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html);
+        // Landscape: jumlah kolomnya ikut jenis penilaian, gampang lebih dari sepuluh.
+        $dompdf->setPaper('A4', 'landscape');
+        $dompdf->render();
+
+        return response()->streamDownload(function () use ($dompdf) {
+            echo $dompdf->output();
+        }, $this->namaBerkas('pdf'), [
+            'Content-Type' => 'application/pdf',
+        ]);
     }
 
     public function render()

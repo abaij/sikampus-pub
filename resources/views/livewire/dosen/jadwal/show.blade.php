@@ -13,7 +13,7 @@
 
 @section('breadcrumb')
     <div class="flex flex-wrap items-center gap-3 text-sm">
-        <a href="{{ route('dosen.kelas') }}" class="inline-flex items-center gap-2 font-medium text-sky-600 hover:text-sky-700">
+        <a href="{{ route('dosen.kelas', ['id_semester' => $idSemester !== '' ? $idSemester : $this->kelas->id_semester]) }}" class="inline-flex items-center gap-2 font-medium text-sky-600 hover:text-sky-700">
             <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
             Kelas mata kuliah
         </a>

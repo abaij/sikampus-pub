@@ -3,7 +3,39 @@
 @section('header_subtitle', 'Daftar kelas yang Anda ampu (termasuk sebagai PIC atau tim pengampu)')
 
 <div class="space-y-4">
-    <div class="flex justify-end">
+    @php $rows = $this->rows; @endphp
+
+    {{-- Tombol ekspor tinggal di dalam elemen root komponen (bukan @section('page_actions'))
+         supaya wire:click-nya terikat — lihat catatan di livewire/mahasiswa/krs/index.blade.php. --}}
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+            @if (! empty($rows))
+                <button
+                    type="button"
+                    wire:click="exportExcel"
+                    wire:loading.attr="disabled"
+                    wire:target="exportExcel"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:opacity-50"
+                >
+                    <i data-lucide="file-spreadsheet" class="h-4 w-4 text-neutral-400" aria-hidden="true"></i>
+                    <span wire:loading.remove wire:target="exportExcel">Ekspor Excel</span>
+                    <span wire:loading wire:target="exportExcel">Memproses...</span>
+                </button>
+
+                <button
+                    type="button"
+                    wire:click="exportPdf"
+                    wire:loading.attr="disabled"
+                    wire:target="exportPdf"
+                    class="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50 disabled:opacity-50"
+                >
+                    <i data-lucide="file-down" class="h-4 w-4 text-neutral-400" aria-hidden="true"></i>
+                    <span wire:loading.remove wire:target="exportPdf">Ekspor PDF</span>
+                    <span wire:loading wire:target="exportPdf">Memproses...</span>
+                </button>
+            @endif
+        </div>
+
         <div class="w-full sm:w-64">
             <x-searchable-select
                 model="filterSemester"
@@ -13,8 +45,6 @@
             />
         </div>
     </div>
-
-    @php $rows = $this->rows; @endphp
 
     <div class="rounded-2xl bg-white shadow-border">
         @if (empty($rows))

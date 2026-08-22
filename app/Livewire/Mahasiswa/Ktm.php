@@ -25,8 +25,6 @@ class Ktm extends Component
 
     public ?string $statusKtm = null;
 
-    public string $nomorKtmInput = '';
-
     public bool $processing = false;
 
     public function mount(): void
@@ -60,10 +58,6 @@ class Ktm extends Component
             return;
         }
 
-        $this->validate([
-            'nomorKtmInput' => ['nullable', 'string', 'max:100'],
-        ]);
-
         $templatePath = $this->currentTemplatePath();
         if (! $templatePath || ! Storage::disk('public')->exists($templatePath)) {
             $this->processing = false;
@@ -87,14 +81,15 @@ class Ktm extends Component
 
         KtmModel::create([
             'id_mahasiswa' => $this->mahasiswaId,
-            'nomor_ktm' => $this->nomorKtmInput !== '' ? trim($this->nomorKtmInput) : null,
+            // Nomor KTM sengaja tidak diisi mahasiswa — petugas yang mengisinya lewat
+            // Admin > KTM (App\Livewire\Admin\Ktm\Form).
+            'nomor_ktm' => null,
             'file' => $filePath,
             'status' => 'active',
             'created_by' => $actor,
             'updated_by' => $actor,
         ]);
 
-        $this->nomorKtmInput = '';
         $this->loadKtm();
         $this->processing = false;
         session()->flash('status', 'KTM berhasil dibuat.');

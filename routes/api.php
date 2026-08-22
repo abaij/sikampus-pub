@@ -145,6 +145,7 @@ Route::middleware('auth:sanctum')->group(function (): void {
         Route::post('krs/pengajuan', [KrsController::class, 'submitPengajuanKrs']);
         Route::delete('krs/pengajuan/{id}', [KrsController::class, 'cancelPengajuanKrs']);
         Route::get('transkrip', [NilaiController::class, 'getTranskripLengkap']);
+        Route::get('nilai-semester/export-pdf', [NilaiController::class, 'exportNilaiSemesterPdf']);
         Route::get('nilai-semester', [NilaiController::class, 'getTranskripMahasiswa']);
         Route::get('ip-per-semester', [NilaiController::class, 'getIpPerSemester']);
         Route::get('tagihan-saya', [TagihanController::class, 'getTagihanMahasiswa']);

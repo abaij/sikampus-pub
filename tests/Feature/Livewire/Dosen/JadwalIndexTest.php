@@ -5,6 +5,7 @@ use App\Models\Dosen;
 use App\Models\Jadwal;
 use App\Models\JadwalDosen;
 use App\Models\Kelas;
+use App\Models\KelasDosen;
 use App\Models\Semester;
 use App\Models\User;
 use Livewire\Livewire;
@@ -19,7 +20,7 @@ it('forbids a non-dosen user', function () {
     $this->actingAs($mahasiswa)->get(route('dosen.jadwal'))->assertForbidden();
 });
 
-it('lists the active jadwal_dosen rows for the logged-in dosen as a flat table', function () {
+it('groups the jadwal of a kelas reached through an active jadwal_dosen row', function () {
     $dosenUser = dosenUser();
     $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
 
@@ -28,13 +29,59 @@ it('lists the active jadwal_dosen rows for the logged-in dosen as a flat table',
     $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'hari' => 'senin', 'is_active' => true]);
     JadwalDosen::create(['id_jadwal' => $jadwal->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
 
-    $rows = Livewire::actingAs($dosenUser)
-        ->test(Index::class)
-        ->instance()
-        ->jadwalRows();
+    $groups = Livewire::actingAs($dosenUser)->test(Index::class)->instance()->kelasGroups();
 
-    expect($rows)->toHaveCount(1);
-    expect($rows->first()->jadwal->id)->toBe($jadwal->id);
+    expect($groups)->toHaveCount(1);
+    expect($groups->first()['kelas']->id)->toBe($kelas->id);
+    expect($groups->first()['rows']->pluck('id')->all())->toBe([$jadwal->id]);
+});
+
+it('shows a kelas that is diampu but has no jadwal at all', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterAktif = Semester::factory()->active()->create();
+    // Kasus DL2025.025: kelas tercatat diampu (PIC + kelas_dosen) tapi belum dijadwalkan.
+    $kelas = Kelas::factory()->create(['id_semester' => $semesterAktif->id, 'id_dosen_pic' => $dosen->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+
+    $component = Livewire::actingAs($dosenUser)->test(Index::class);
+    $groups = $component->instance()->kelasGroups();
+
+    expect($groups)->toHaveCount(1);
+    expect($groups->first()['rows'])->toBeEmpty();
+
+    $component->assertSee('Tidak ada jadwal mengajar di semester ini')
+        ->assertSee('belum dijadwalkan');
+});
+
+it('lists a kelas reached only through kelas_dosen, with its jadwal', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelas = Kelas::factory()->create(['id_semester' => $semesterAktif->id]);
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => false]);
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'hari' => 'rabu', 'is_active' => true]);
+
+    $groups = Livewire::actingAs($dosenUser)->test(Index::class)->instance()->kelasGroups();
+
+    expect($groups)->toHaveCount(1);
+    expect($groups->first()['rows']->pluck('id')->all())->toBe([$jadwal->id]);
+});
+
+it('puts kelas without any jadwal after the scheduled ones', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $semesterAktif = Semester::factory()->active()->create();
+    $kelasTanpaJadwal = Kelas::factory()->create(['id_semester' => $semesterAktif->id, 'id_dosen_pic' => $dosen->id]);
+    $kelasBerjadwal = Kelas::factory()->create(['id_semester' => $semesterAktif->id, 'id_dosen_pic' => $dosen->id]);
+    Jadwal::factory()->create(['id_kelas' => $kelasBerjadwal->id, 'hari' => 'jumat', 'jam_mulai' => '13:00', 'is_active' => true]);
+
+    $groups = Livewire::actingAs($dosenUser)->test(Index::class)->instance()->kelasGroups();
+
+    expect($groups->pluck('kelas.id')->all())->toBe([$kelasBerjadwal->id, $kelasTanpaJadwal->id]);
 });
 
 it('sorts rows by hari then jam_mulai, not by a naive combined numeric key', function () {
@@ -53,9 +100,9 @@ it('sorts rows by hari then jam_mulai, not by a naive combined numeric key', fun
     JadwalDosen::create(['id_jadwal' => $jadwalSeninSore->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
     JadwalDosen::create(['id_jadwal' => $jadwalSelasaPagi->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
 
-    $rows = Livewire::actingAs($dosenUser)->test(Index::class)->instance()->jadwalRows();
+    $rows = Livewire::actingAs($dosenUser)->test(Index::class)->instance()->kelasGroups()->first()['rows'];
 
-    expect($rows->pluck('id_jadwal')->all())->toBe([$jadwalSeninSore->id, $jadwalSelasaPagi->id]);
+    expect($rows->pluck('id')->all())->toBe([$jadwalSeninSore->id, $jadwalSelasaPagi->id]);
 });
 
 it('filters jadwal rows by the selected semester', function () {
@@ -71,16 +118,17 @@ it('filters jadwal rows by the selected semester', function () {
     JadwalDosen::create(['id_jadwal' => $jadwalA->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
     JadwalDosen::create(['id_jadwal' => $jadwalB->id, 'id_dosen' => $dosen->id, 'status' => 'active']);
 
-    $rows = Livewire::actingAs($dosenUser)
+    $groups = Livewire::actingAs($dosenUser)
         ->test(Index::class)
         ->set('filterSemester', (string) $semesterB->id)
         ->instance()
-        ->jadwalRows();
+        ->kelasGroups();
 
-    expect($rows->pluck('id_jadwal')->all())->toBe([$jadwalB->id]);
+    expect($groups->pluck('kelas.id')->all())->toBe([$kelasB->id]);
+    expect($groups->first()['rows']->pluck('id')->all())->toBe([$jadwalB->id]);
 });
 
-it('excludes jadwal_dosen rows that are not active', function () {
+it('ignores an inactive jadwal_dosen row when the dosen has no other claim on the kelas', function () {
     $dosenUser = dosenUser();
     $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
 
@@ -89,9 +137,9 @@ it('excludes jadwal_dosen rows that are not active', function () {
     $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'hari' => 'senin', 'is_active' => true]);
     JadwalDosen::create(['id_jadwal' => $jadwal->id, 'id_dosen' => $dosen->id, 'status' => 'inactive']);
 
-    $rows = Livewire::actingAs($dosenUser)->test(Index::class)->instance()->jadwalRows();
-
-    expect($rows)->toHaveCount(0);
+    // Penugasan nonaktif bukan bukti mengampu, dan dosen ini tidak tercatat di kelas_dosen
+    // maupun sebagai PIC — kelasnya tidak boleh muncul.
+    expect(Livewire::actingAs($dosenUser)->test(Index::class)->instance()->kelasGroups())->toHaveCount(0);
 });
 
 it('links each row to the jadwal detail page', function () {

@@ -2,7 +2,7 @@
 @section('header_title', 'Arsip nilai')
 
 @section('breadcrumb')
-    <a href="{{ route('dosen.arsip') }}" class="inline-flex items-center gap-2 text-sm font-medium text-sky-600 hover:text-sky-700">
+    <a href="{{ route('dosen.arsip', ['id_semester' => $this->kelas->id_semester]) }}" class="inline-flex items-center gap-2 text-sm font-medium text-sky-600 hover:text-sky-700">
         <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
         Kembali ke arsip perkuliahan
     </a>

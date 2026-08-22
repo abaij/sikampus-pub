@@ -367,10 +367,6 @@ class KtmController extends Controller
             return response()->json(['message' => 'KTM sudah tersedia. Gunakan perbarui bila perlu.'], 422);
         }
 
-        $request->validate([
-            'nomor_ktm' => ['nullable', 'string', 'max:100'],
-        ]);
-
         $mhs = Mahasiswa::query()
             ->whereKey($mhs->id)
             ->with(['prodi.jenjang'])
@@ -394,7 +390,9 @@ class KtmController extends Controller
 
         $row = Ktm::create([
             'id_mahasiswa' => (int) $mhs->id,
-            'nomor_ktm' => $request->input('nomor_ktm') ? trim((string) $request->input('nomor_ktm')) : null,
+            // Nomor KTM sengaja tidak diterima dari mahasiswa — petugas yang mengisinya lewat
+            // endpoint admin (store/update) atau Admin > KTM di panel.
+            'nomor_ktm' => null,
             'file' => $filePath,
             'status' => 'active',
             'created_by' => $actor,

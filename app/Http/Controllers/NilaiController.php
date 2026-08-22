@@ -2709,6 +2709,192 @@ class NilaiController extends Controller
     }
 
     /**
+     * Ekspor nilai per semester milik mahasiswa yang sedang login ke PDF.
+     *
+     * Mengikuti pola KrsController::exportKrsPdf (dokumen ringkas, tanpa kop surat) dan memakai
+     * aturan penyaringan yang sama dengan getTranskripMahasiswa: hanya KRS yang sudah disetujui,
+     * dan hanya nilai final yang ikut dihitung ke IP. Query `id_semester` (opsional) membatasi
+     * ekspor ke satu semester saja; tanpa filter, seluruh semester ikut tercetak.
+     */
+    public function exportNilaiSemesterPdf(Request $request): StreamedResponse
+    {
+        $user = $request->user();
+
+        $mahasiswa = Mahasiswa::with('prodi')->where('id_user', $user->id)->first();
+
+        if (! $mahasiswa) {
+            abort(404, 'Data mahasiswa tidak ditemukan');
+        }
+
+        $semesterId = $request->query('id_semester');
+
+        $query = Krs::with([
+            'kelas.kurikulumMatkul.matkul',
+            'kelas.semester',
+            'kelas.prodi',
+        ])
+            ->where('id_mahasiswa', $mahasiswa->id)
+            ->whereNotNull('approved_at')
+            ->whereNull('deleted_at');
+
+        if ($semesterId) {
+            $query->whereHas('kelas', function ($q) use ($semesterId) {
+                $q->where('id_semester', $semesterId);
+            });
+        }
+
+        $krsList = UrutanMatkulService::urutkanKrs($query->orderBy('created_at', 'asc')->get());
+
+        // Hanya nilai final yang dipakai, sama seperti tampilan Nilai Semester di portal mahasiswa.
+        $krsIds = $krsList->pluck('id')->toArray();
+        $nilaiMap = [];
+        if (! empty($krsIds)) {
+            $nilaiMap = Nilai::whereIn('id_krs', $krsIds)
+                ->whereNull('deleted_at')
+                ->where('is_final', true)
+                ->get()
+                ->keyBy('id_krs')
+                ->toArray();
+        }
+
+        $perSemester = [];
+        $totalSks = 0;
+        $totalAngkaMutu = 0;
+        $totalSksDenganNilai = 0;
+
+        foreach ($krsList as $krs) {
+            $matkul = $krs->kelas->kurikulumMatkul->matkul ?? null;
+            $semester = $krs->kelas->semester ?? null;
+
+            if (! $matkul || ! $semester) {
+                continue;
+            }
+
+            $nilai = $nilaiMap[$krs->id] ?? null;
+            $sks = $matkul->sks ?? 0;
+            $angkaMutu = ($nilai && $nilai['angka_mutu'] !== null) ? (float) $nilai['angka_mutu'] : null;
+            $hurufMutu = $nilai['huruf_mutu'] ?? null;
+
+            $totalSks += $sks;
+            if ($angkaMutu !== null) {
+                $totalAngkaMutu += ($angkaMutu * $sks);
+                $totalSksDenganNilai += $sks;
+            }
+
+            if (! isset($perSemester[$semester->id])) {
+                $perSemester[$semester->id] = [
+                    'semester' => $semester,
+                    'mata_kuliah' => [],
+                    'total_sks' => 0,
+                    'total_angka_mutu' => 0,
+                    'total_sks_dengan_nilai' => 0,
+                ];
+            }
+
+            $perSemester[$semester->id]['mata_kuliah'][] = [
+                'kode' => $matkul->kode,
+                'nama' => $matkul->nama,
+                'sks' => $sks,
+                'huruf_mutu' => $hurufMutu,
+                'angka_mutu' => $angkaMutu,
+            ];
+            $perSemester[$semester->id]['total_sks'] += $sks;
+            if ($angkaMutu !== null) {
+                $perSemester[$semester->id]['total_angka_mutu'] += ($angkaMutu * $sks);
+                $perSemester[$semester->id]['total_sks_dengan_nilai'] += $sks;
+            }
+        }
+
+        // Semester terbaru di halaman pertama, sama dengan urutan di layar.
+        usort($perSemester, function ($a, $b) {
+            return $b['semester']->id <=> $a['semester']->id;
+        });
+
+        $ipKumulatif = $totalSksDenganNilai > 0
+            ? number_format($totalAngkaMutu / $totalSksDenganNilai, 2)
+            : '-';
+
+        $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+        body { font-family: DejaVu Sans, sans-serif; font-size: 10pt; }
+        .title { text-align: center; font-size: 14pt; font-weight: bold; margin-bottom: 4px; }
+        .subtitle { text-align: center; margin-bottom: 4px; }
+        .summary { text-align: center; margin-bottom: 16px; font-size: 9pt; }
+        .section { margin-bottom: 14px; }
+        .section-title { font-size: 11pt; font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        th { background-color: #4472C4; color: white; padding: 6px; border: 1px solid #000; text-align: center; }
+        td { padding: 5px; border: 1px solid #000; }
+        td.num { text-align: center; }
+        .footer { margin-top: 20px; text-align: right; font-size: 9pt; }
+        </style></head><body>';
+
+        $html .= '<div class="title">KARTU HASIL STUDI (KHS)</div>';
+        $html .= '<div class="subtitle">'.htmlspecialchars($mahasiswa->nim.' - '.$mahasiswa->nama).'</div>';
+        if ($mahasiswa->prodi) {
+            $html .= '<div class="subtitle">Program Studi: '.htmlspecialchars($mahasiswa->prodi->nama).'</div>';
+        }
+        $html .= '<div class="summary">Total SKS: '.(int) $totalSks
+            .' &nbsp;|&nbsp; SKS dengan Nilai: '.(int) $totalSksDenganNilai
+            .' &nbsp;|&nbsp; IP Kumulatif: '.$ipKumulatif.'</div>';
+
+        foreach ($perSemester as $group) {
+            $ipSemester = $group['total_sks_dengan_nilai'] > 0
+                ? number_format($group['total_angka_mutu'] / $group['total_sks_dengan_nilai'], 2)
+                : '-';
+
+            $html .= '<div class="section">';
+            $html .= '<div class="section-title">'
+                .htmlspecialchars($group['semester']->nama.' ('.$group['semester']->kode.')')
+                .' &mdash; Total SKS: '.(int) $group['total_sks']
+                .' &mdash; IP Semester: '.$ipSemester.'</div>';
+            $html .= '<table><thead><tr>';
+            $html .= '<th style="width:6%">No</th><th style="width:14%">Kode</th><th style="width:44%">Mata Kuliah</th>';
+            $html .= '<th style="width:8%">SKS</th><th style="width:14%">Huruf Mutu</th><th style="width:14%">Angka Mutu</th>';
+            $html .= '</tr></thead><tbody>';
+
+            $no = 1;
+            foreach ($group['mata_kuliah'] as $item) {
+                $html .= '<tr>';
+                $html .= '<td class="num">'.$no.'</td>';
+                $html .= '<td>'.htmlspecialchars($item['kode'] ?? '-').'</td>';
+                $html .= '<td>'.htmlspecialchars($item['nama'] ?? '-').'</td>';
+                $html .= '<td class="num">'.(int) $item['sks'].'</td>';
+                $html .= '<td class="num">'.htmlspecialchars($item['huruf_mutu'] ?? '-').'</td>';
+                $html .= '<td class="num">'.($item['angka_mutu'] !== null ? number_format($item['angka_mutu'], 2) : '-').'</td>';
+                $html .= '</tr>';
+                $no++;
+            }
+            $html .= '</tbody></table></div>';
+        }
+
+        if (empty($perSemester)) {
+            $html .= '<p>Tidak ada data nilai.</p>';
+        }
+
+        $html .= '<div class="footer">Dicetak: '.date('d/m/Y H:i').'</div></body></html>';
+
+        $options = new Options;
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+        $dompdf = new Dompdf($options);
+        $dompdf->loadHtml($html);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        // Kalau diekspor per satu semester, kodenya ikut di nama berkas supaya mudah dibedakan.
+        $kodeSemester = ($semesterId && count($perSemester) === 1)
+            ? '_'.preg_replace('/\s+/', '_', $perSemester[0]['semester']->kode)
+            : '';
+        $filename = 'Nilai_'.preg_replace('/\s+/', '_', $mahasiswa->nim).$kodeSemester.'_'.date('Y-m-d').'.pdf';
+
+        return response()->streamDownload(function () use ($dompdf) {
+            echo $dompdf->output();
+        }, $filename, [
+            'Content-Type' => 'application/pdf',
+        ]);
+    }
+
+    /**
      * Get data IP per semester untuk grafik dashboard mahasiswa
      */
     public function getIpPerSemester(Request $request): JsonResponse
