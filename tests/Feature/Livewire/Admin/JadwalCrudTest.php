@@ -11,6 +11,7 @@ use App\Models\KurikulumMatkul;
 use App\Models\Matkul;
 use App\Models\Prodi;
 use App\Models\Ruangan;
+use App\Models\Semester;
 use Livewire\Livewire;
 
 it('renders index, create form, and show page', function () {
@@ -23,6 +24,51 @@ it('renders index, create form, and show page', function () {
     $this->actingAs($admin)->get(route('admin.akademik.jadwal'))->assertOk()->assertSee('Pemrograman Web');
     $this->actingAs($admin)->get(route('admin.akademik.jadwal.create'))->assertOk()->assertSee('Tambah Jadwal');
     $this->actingAs($admin)->get(route('admin.akademik.jadwal.show', $jadwal->id))->assertOk()->assertSee('Pemrograman Web');
+});
+
+it('marks the filter prodi and filter semester selects as live so picking them actually filters the kelas list', function () {
+    // Regression: x-searchable-select cuma mengirim nilai ke server saat :live="true" — tanpa itu,
+    // updatedFilterProdi()/updatedFilterSemester() dan wire:key milik dropdown kelas tidak pernah
+    // ter-trigger dari memilih prodi/semester saja, jadi kelas yang tampil selalu daftar tak
+    // tersaring. Livewire::test()->set() tidak menangkap bug ini karena melewati Alpine/entangle,
+    // makanya diperiksa lewat markup HTML yang benar-benar dirender.
+    $admin = adminUser();
+
+    $response = $this->actingAs($admin)->get(route('admin.akademik.jadwal.create'));
+
+    $response->assertOk();
+    $response->assertSee("\$wire.entangle('filterProdi').live", false);
+    $response->assertSee("\$wire.entangle('filterSemester').live", false);
+});
+
+it('lists every kelas matching the selected prodi and semester, not capped at 200', function () {
+    $admin = adminUser();
+    $prodi = Prodi::factory()->create();
+    $semester = Semester::factory()->create();
+
+    // Satu kurikulum_matkul dipakai ulang di semua baris supaya tidak memicu 205x rantai factory
+    // bersarang (Kurikulum -> Prodi -> Jenjang) yang menghabiskan nilai unique() milik Jenjang.
+    $kurikulumMatkul = KurikulumMatkul::factory()->create();
+
+    // Regression: kelasOptions() dulu pakai ->limit(200), jadi kombinasi prodi+semester dengan
+    // lebih dari 200 kelas kehilangan sisanya begitu saja.
+    $kelasIds = Kelas::factory()->count(205)->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_prodi' => $prodi->id,
+        'id_semester' => $semester->id,
+    ])->pluck('id');
+
+    // Kelas di prodi/semester lain tidak boleh ikut muncul.
+    Kelas::factory()->create();
+
+    $component = Livewire::actingAs($admin)
+        ->test(Form::class)
+        ->set('filterProdi', $prodi->id)
+        ->set('filterSemester', $semester->id);
+
+    $optionIds = collect($component->instance()->kelasOptions())->pluck('id');
+    expect($optionIds)->toHaveCount(205);
+    expect($optionIds->diff($kelasIds))->toBeEmpty();
 });
 
 it('creates several jadwal slots at once from jumlah_pertemuan', function () {

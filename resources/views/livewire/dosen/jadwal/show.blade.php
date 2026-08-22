@@ -85,10 +85,9 @@
         </div>
     </div>
 
-    {{-- Tombol "Tambah Slot" sengaja disembunyikan sementara — ternyata dosen tidak seharusnya
-         bisa membuat jadwal sendiri. Aksi Livewire-nya (openTambahSlotModal/saveTambahSlot di
-         App\Livewire\Dosen\Jadwal\Show) dan modalnya di bawah tetap dibiarkan apa adanya, cuma
-         jadi tidak terjangkau dari UI selama tombol ini tidak ada. --}}
+    {{-- Dosen tidak membuat jadwal sendiri: tidak ada tombol tambah slot maupun generate di sini
+         (lihat catatan di modal tambah slot). Yang boleh dilakukan dosen pengampu adalah MENGUBAH
+         slot yang sudah ada — lihat tombol Ubah pada tiap baris tabel di bawah. --}}
     <h3 class="text-base font-semibold text-neutral-900">Slot jadwal pertemuan</h3>
 
     @php $rows = $this->jadwalRows; @endphp
@@ -152,18 +151,99 @@
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 text-center">
-                                    <a
-                                        href="{{ route('dosen.jadwal.detail', ['kelasId' => $kelasId, 'jadwalId' => $jadwal->id, 'id_semester' => $idSemester !== '' ? $idSemester : null]) }}"
-                                        class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium text-neutral-700 shadow-border hover:bg-neutral-50"
-                                    >
-                                        <i data-lucide="eye" class="h-3.5 w-3.5 text-neutral-400" aria-hidden="true"></i>
-                                        Detail
-                                    </a>
+                                    <div class="flex items-center justify-center gap-2">
+                                        <button
+                                            type="button"
+                                            wire:click="openEditModal({{ $jadwal->id }})"
+                                            wire:loading.attr="disabled"
+                                            wire:target="openEditModal({{ $jadwal->id }})"
+                                            class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium text-neutral-700 shadow-border hover:bg-neutral-50 disabled:opacity-50"
+                                        >
+                                            <i data-lucide="pencil" class="h-3.5 w-3.5 text-neutral-400" aria-hidden="true"></i>
+                                            Ubah
+                                        </button>
+                                        <a
+                                            href="{{ route('dosen.jadwal.detail', ['kelasId' => $kelasId, 'jadwalId' => $jadwal->id, 'id_semester' => $idSemester !== '' ? $idSemester : null]) }}"
+                                            class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium text-neutral-700 shadow-border hover:bg-neutral-50"
+                                        >
+                                            <i data-lucide="eye" class="h-3.5 w-3.5 text-neutral-400" aria-hidden="true"></i>
+                                            Detail
+                                        </a>
+                                    </div>
                                 </td>
                             </tr>
                         @endforeach
                     </tbody>
                 </table>
+            </div>
+        </div>
+    @endif
+
+
+
+    @if ($showEditModal)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 px-4">
+            <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-border-lg">
+                <h3 class="text-base font-semibold text-neutral-900">Ubah Slot Jadwal</h3>
+                <p class="mt-1 text-sm text-neutral-500">
+                    Kelas {{ $kelas->kode }} — {{ $km?->namaMatkulLabel() ?? '—' }}.
+                    Hanya slot ini yang diubah; jumlah pertemuan kelas tidak berubah.
+                </p>
+
+                <form wire:submit="saveEditJadwal" class="mt-4 space-y-4">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Hari</label>
+                            <x-searchable-select
+                                model="editHari"
+                                :options="collect(\App\Models\Jadwal::HARI)->mapWithKeys(fn ($h) => [$h => ucfirst($h)])->all()"
+                                placeholder="— Tidak berulang mingguan —"
+                            />
+                            @error('editHari') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Tanggal</label>
+                            <input type="date" wire:model="editTanggal" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('editTanggal') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('editTanggal') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jam mulai</label>
+                            <input type="time" wire:model="editJamMulai" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('editJamMulai') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('editJamMulai') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jam selesai</label>
+                            <input type="time" wire:model="editJamSelesai" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('editJamSelesai') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('editJamSelesai') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Ruangan</label>
+                            <x-searchable-select model="editIdRuangan" :options="$this->ruanganOptions" placeholder="— Pilih ruangan —" />
+                            @error('editIdRuangan') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jenis kuliah</label>
+                            <x-searchable-select model="editIdJenisKuliah" :options="$this->jenisKuliahOptions" placeholder="— Pilih jenis kuliah —" />
+                            @error('editIdJenisKuliah') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end gap-2 pt-2">
+                        <button type="button" wire:click="closeEditModal" class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 shadow-border hover:bg-neutral-50">
+                            Batal
+                        </button>
+                        <button
+                            type="submit"
+                            wire:loading.attr="disabled"
+                            wire:target="saveEditJadwal"
+                            class="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800 disabled:opacity-50"
+                        >
+                            <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i>
+                            <span wire:loading.remove wire:target="saveEditJadwal">Simpan</span>
+                            <span wire:loading wire:target="saveEditJadwal">Menyimpan...</span>
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     @endif

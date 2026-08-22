@@ -50,6 +50,10 @@ class Detail extends Component
 
     public string $tanggal = '';
 
+    public string $jam_mulai = '';
+
+    public string $jam_selesai = '';
+
     public string $id_ruangan = '';
 
     public string $id_jenis_kuliah = '';
@@ -127,6 +131,9 @@ class Detail extends Component
     {
         $this->hari = (string) $jadwal->hari;
         $this->tanggal = $jadwal->tanggal?->format('Y-m-d') ?? '';
+        // Kolomnya bertipe TIME ("08:00:00"), sedangkan <input type="time"> memakai H:i.
+        $this->jam_mulai = $jadwal->jam_mulai ? substr((string) $jadwal->jam_mulai, 0, 5) : '';
+        $this->jam_selesai = $jadwal->jam_selesai ? substr((string) $jadwal->jam_selesai, 0, 5) : '';
         $this->id_ruangan = (string) $jadwal->id_ruangan;
         $this->id_jenis_kuliah = (string) $jadwal->id_jenis_kuliah;
         $this->bahasan = (string) $jadwal->bahasan;
@@ -633,20 +640,33 @@ class Detail extends Component
     }
 
     /**
-     * Sama persis dengan JadwalDosenController::updateJadwalAmpu.
+     * Menyalin JadwalDosenController::updateJadwalAmpu, DENGAN satu tambahan yang sengaja berbeda:
+     * jam_mulai/jam_selesai ikut bisa diubah di sini. Endpoint API itu hanya melayani hari,
+     * tanggal, ruangan, dan jenis kuliah — padahal memindahkan jam kuliah adalah bentuk paling
+     * lazim dari "mengubah jadwal". Aturan jamnya sama dengan modal ubah di
+     * App\Livewire\Dosen\Jadwal\Show: boleh dikosongkan, tapi kalau salah satu diisi maka
+     * keduanya wajib dan jam selesai harus setelah jam mulai.
      */
     public function saveJadwal(): void
     {
         $validated = $this->validate([
             'hari' => ['nullable', 'string', Rule::in(Jadwal::HARI)],
             'tanggal' => ['nullable', 'date'],
+            'jam_mulai' => ['nullable', 'date_format:H:i', 'required_with:jam_selesai'],
+            'jam_selesai' => ['nullable', 'date_format:H:i', 'required_with:jam_mulai', 'after:jam_mulai'],
             'id_ruangan' => ['nullable', 'integer', 'exists:ruangan,id'],
             'id_jenis_kuliah' => ['nullable', 'integer', 'exists:jenis_kuliah,id'],
+        ], [
+            'jam_mulai.required_with' => 'Jam mulai wajib diisi bila jam selesai diisi.',
+            'jam_selesai.required_with' => 'Jam selesai wajib diisi bila jam mulai diisi.',
+            'jam_selesai.after' => 'Jam selesai harus lebih besar dari jam mulai.',
         ]);
 
         $jadwal = Jadwal::findOrFail($this->jadwalId);
         $jadwal->hari = $validated['hari'] !== '' && $validated['hari'] !== null ? strtolower((string) $validated['hari']) : null;
         $jadwal->tanggal = $validated['tanggal'] !== '' ? $validated['tanggal'] : null;
+        $jadwal->jam_mulai = $validated['jam_mulai'] !== '' ? $validated['jam_mulai'] : null;
+        $jadwal->jam_selesai = $validated['jam_selesai'] !== '' ? $validated['jam_selesai'] : null;
         $jadwal->id_ruangan = $validated['id_ruangan'] !== '' && $validated['id_ruangan'] !== null ? (int) $validated['id_ruangan'] : null;
         $jadwal->id_jenis_kuliah = $validated['id_jenis_kuliah'] !== '' && $validated['id_jenis_kuliah'] !== null ? (int) $validated['id_jenis_kuliah'] : null;
         $jadwal->save();

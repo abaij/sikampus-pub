@@ -171,6 +171,16 @@
                             @error('tanggal') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
                         </div>
                         <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jam mulai</label>
+                            <input type="time" wire:model="jam_mulai" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('jam_mulai') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('jam_mulai') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
+                            <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jam selesai</label>
+                            <input type="time" wire:model="jam_selesai" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('jam_selesai') ring-2 ring-red-500 @enderror shadow-border" />
+                            @error('jam_selesai') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                        <div>
                             <label class="mb-1.5 block text-sm font-medium text-neutral-700">Ruangan</label>
                             <x-searchable-select model="id_ruangan" :options="$this->ruanganOptions" placeholder="— Pilih ruangan —" />
                             @error('id_ruangan') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror

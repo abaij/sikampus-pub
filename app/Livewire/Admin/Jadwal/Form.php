@@ -154,6 +154,11 @@ class Form extends Component
         return $dosen->kode_dosen ? "{$label} ({$dosen->kode_dosen})" : $label;
     }
 
+    /**
+     * Tidak dibatasi limit() — sudah disaring lewat scope prodi user plus filterProdi/filterSemester
+     * di form, jadi hasilnya bounded oleh filter itu sendiri, bukan angka arbitrer. Lihat catatan
+     * serupa di App\Livewire\Admin\Krs\Form::kelasOptions().
+     */
     #[Computed]
     public function kelasOptions()
     {
@@ -174,7 +179,7 @@ class Form extends Component
             $query->where('id_semester', $this->filterSemester);
         }
 
-        return $query->orderBy('id')->limit(200)->get()->map(fn (Kelas $k) => (object) [
+        return $query->orderBy('id')->get()->map(fn (Kelas $k) => (object) [
             'id' => $k->id,
             'label' => trim(($k->kurikulumMatkul?->matkul?->kode ? "{$k->kurikulumMatkul->matkul->kode} - " : '').($k->kurikulumMatkul?->matkul?->nama ?? 'Kelas').($k->semester ? " ({$k->semester->nama} {$k->semester->kode})" : '')),
         ]);

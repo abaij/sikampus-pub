@@ -1,8 +1,10 @@
 <?php
 
+use App\Livewire\Dosen\Jadwal\Detail;
 use App\Livewire\Dosen\Jadwal\Show;
 use App\Models\Dosen;
 use App\Models\Jadwal;
+use App\Models\JenisKuliah;
 use App\Models\Kelas;
 use App\Models\KelasDosen;
 use App\Models\Krs;
@@ -208,4 +210,136 @@ it('refreshes the slot jadwal pertemuan table after adding a new slot', function
         ->call('saveTambahSlot');
 
     expect($component->instance()->jadwalRows())->toHaveCount(1);
+});
+
+it('lets any assigned dosen edit an existing jadwal slot from the list', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $kelas = Kelas::factory()->create();
+    // Bukan PIC: mengubah jadwal terbuka untuk semua dosen pengampu kelas ini.
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => false]);
+
+    $jadwal = Jadwal::factory()->create([
+        'id_kelas' => $kelas->id,
+        'hari' => 'senin',
+        'jam_mulai' => '08:00',
+        'jam_selesai' => '10:00',
+    ]);
+    $ruangan = Ruangan::factory()->create();
+    $jenisKuliah = JenisKuliah::factory()->create();
+
+    Livewire::actingAs($dosenUser)->test(Show::class, ['kelasId' => $kelas->id])
+        ->assertSee('Ubah')
+        ->call('openEditModal', $jadwal->id)
+        ->assertSet('showEditModal', true)
+        ->assertSet('editHari', 'senin')
+        ->assertSet('editJamMulai', '08:00')
+        ->assertSet('editJamSelesai', '10:00')
+        ->set('editHari', 'rabu')
+        ->set('editJamMulai', '13:00')
+        ->set('editJamSelesai', '15:30')
+        ->set('editTanggal', '2026-04-01')
+        ->set('editIdRuangan', (string) $ruangan->id)
+        ->set('editIdJenisKuliah', (string) $jenisKuliah->id)
+        ->call('saveEditJadwal')
+        ->assertHasNoErrors()
+        ->assertSet('showEditModal', false);
+
+    $jadwal->refresh();
+
+    expect($jadwal->hari)->toBe('rabu');
+    expect(substr((string) $jadwal->jam_mulai, 0, 5))->toBe('13:00');
+    expect(substr((string) $jadwal->jam_selesai, 0, 5))->toBe('15:30');
+    expect($jadwal->tanggal->format('Y-m-d'))->toBe('2026-04-01');
+    expect($jadwal->id_ruangan)->toBe($ruangan->id);
+    expect($jadwal->id_jenis_kuliah)->toBe($jenisKuliah->id);
+});
+
+it('rejects jam selesai that is not after jam mulai, and jam filled only on one side', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $kelas = Kelas::factory()->create();
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'jam_mulai' => '08:00', 'jam_selesai' => '10:00']);
+
+    Livewire::actingAs($dosenUser)->test(Show::class, ['kelasId' => $kelas->id])
+        ->call('openEditModal', $jadwal->id)
+        ->set('editJamMulai', '10:00')
+        ->set('editJamSelesai', '09:00')
+        ->call('saveEditJadwal')
+        ->assertHasErrors(['editJamSelesai']);
+
+    Livewire::actingAs($dosenUser)->test(Show::class, ['kelasId' => $kelas->id])
+        ->call('openEditModal', $jadwal->id)
+        ->set('editJamMulai', '')
+        ->set('editJamSelesai', '09:00')
+        ->call('saveEditJadwal')
+        ->assertHasErrors(['editJamMulai']);
+
+    $jadwal->refresh();
+    expect(substr((string) $jadwal->jam_mulai, 0, 5))->toBe('08:00');
+});
+
+it('refuses to edit a jadwal slot that belongs to another kelas', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $kelas = Kelas::factory()->create();
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+
+    $kelasLain = Kelas::factory()->create();
+    $jadwalLain = Jadwal::factory()->create(['id_kelas' => $kelasLain->id, 'hari' => 'senin']);
+
+    Livewire::actingAs($dosenUser)->test(Show::class, ['kelasId' => $kelas->id])
+        ->call('openEditModal', $jadwalLain->id)
+        ->assertForbidden();
+
+    // Juga saat id-nya diselundupkan langsung ke aksi simpan.
+    Livewire::actingAs($dosenUser)->test(Show::class, ['kelasId' => $kelas->id])
+        ->set('editJadwalId', $jadwalLain->id)
+        ->set('editHari', 'jumat')
+        ->call('saveEditJadwal')
+        ->assertForbidden();
+
+    expect($jadwalLain->refresh()->hari)->toBe('senin');
+});
+
+it('lets a dosen change the jam of a slot from the detail page too', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $kelas = Kelas::factory()->create();
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'jam_mulai' => '08:00', 'jam_selesai' => '10:00']);
+
+    Livewire::actingAs($dosenUser)
+        ->test(Detail::class, ['kelasId' => $kelas->id, 'jadwalId' => $jadwal->id])
+        ->call('startEdit')
+        ->assertSet('jam_mulai', '08:00')
+        ->set('jam_mulai', '07:30')
+        ->set('jam_selesai', '09:30')
+        ->call('saveJadwal')
+        ->assertHasNoErrors();
+
+    $jadwal->refresh();
+    expect(substr((string) $jadwal->jam_mulai, 0, 5))->toBe('07:30');
+    expect(substr((string) $jadwal->jam_selesai, 0, 5))->toBe('09:30');
+});
+
+it('orders the slot table by pertemuan ke, not alphabetically by hari', function () {
+    $dosenUser = dosenUser();
+    $dosen = Dosen::where('id_user', $dosenUser->id)->firstOrFail();
+
+    $kelas = Kelas::factory()->create();
+    KelasDosen::create(['id_dosen' => $dosen->id, 'id_kelas' => $kelas->id, 'is_pic' => true]);
+
+    // Alfabetis, "jumat" mendahului "senin" — urutan pertemuan yang harus menang.
+    $pertemuan1 = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'urutan_pertemuan' => 1, 'hari' => 'senin']);
+    $pertemuan2 = Jadwal::factory()->create(['id_kelas' => $kelas->id, 'urutan_pertemuan' => 2, 'hari' => 'jumat']);
+
+    $rows = Livewire::actingAs($dosenUser)->test(Show::class, ['kelasId' => $kelas->id])->instance()->jadwalRows();
+
+    expect(collect($rows)->pluck('jadwal.id')->all())->toBe([$pertemuan1->id, $pertemuan2->id]);
 });

@@ -30,6 +30,22 @@ class Show extends Component
     #[Url(as: 'id_semester')]
     public string $idSemester = '';
 
+    public bool $showEditModal = false;
+
+    public ?int $editJadwalId = null;
+
+    public string $editHari = '';
+
+    public string $editTanggal = '';
+
+    public string $editJamMulai = '';
+
+    public string $editJamSelesai = '';
+
+    public string $editIdRuangan = '';
+
+    public string $editIdJenisKuliah = '';
+
     public bool $showTambahSlotModal = false;
 
     public string $tambahHari = '';
@@ -75,9 +91,12 @@ class Show extends Component
             'prodi.jenjang',
             'semester',
             'kelompokKelas',
+            // Urut menurut pertemuan ke-, bukan menurut nama hari: kolom `hari` berisi teks
+            // ("senin", "selasa", …) sehingga orderBy('hari') mengurutkannya secara alfabetis —
+            // urutan yang salah, dan barisnya ikut melompat setiap kali dosen mengubah harinya.
             'jadwal' => fn ($q) => $q->whereNull('deleted_at')
                 ->with(['ruangan', 'jenisKuliah', 'dosen.dosen'])
-                ->orderBy('hari')
+                ->orderByRaw('urutan_pertemuan IS NULL, urutan_pertemuan')
                 ->orderBy('jam_mulai'),
         ])
             ->whereNull('deleted_at')
@@ -231,6 +250,83 @@ class Show extends Component
         unset($this->kelas, $this->jadwalRows);
         $this->showTambahSlotModal = false;
         session()->flash('status', 'Slot jadwal pertemuan berhasil ditambahkan.');
+    }
+
+    /**
+     * Ubah satu slot jadwal langsung dari daftar, tanpa harus masuk ke halaman detailnya.
+     *
+     * Dosen tidak boleh MEMBUAT jadwal (tidak ada tambah slot/generate di halaman ini), tapi boleh
+     * MENGUBAH slot yang sudah ada — berlaku untuk semua dosen yang mengampu kelas ini, sama
+     * dengan siapa yang boleh membuka halaman ini (mount() sudah memastikan lewat kelas_dosen).
+     * Field dan aturan validasinya sama persis dengan form ubah di Dosen\Jadwal\Detail::saveJadwal,
+     * supaya dua pintu masuk ini tidak berbeda perilaku.
+     */
+    public function openEditModal(int $jadwalId): void
+    {
+        $jadwal = Jadwal::whereNull('deleted_at')->find($jadwalId);
+
+        abort_unless($jadwal !== null, 404, 'Slot jadwal tidak ditemukan.');
+        abort_unless((int) $jadwal->id_kelas === $this->kelasId, 403, 'Slot jadwal ini bukan milik kelas yang sedang dibuka.');
+
+        $this->resetValidation();
+        $this->editJadwalId = $jadwal->id;
+        $this->editHari = (string) $jadwal->hari;
+        $this->editTanggal = $jadwal->tanggal?->format('Y-m-d') ?? '';
+        // Kolomnya bertipe TIME ("08:00:00"), sedangkan <input type="time"> memakai H:i.
+        $this->editJamMulai = $jadwal->jam_mulai ? substr((string) $jadwal->jam_mulai, 0, 5) : '';
+        $this->editJamSelesai = $jadwal->jam_selesai ? substr((string) $jadwal->jam_selesai, 0, 5) : '';
+        $this->editIdRuangan = (string) $jadwal->id_ruangan;
+        $this->editIdJenisKuliah = (string) $jadwal->id_jenis_kuliah;
+        $this->showEditModal = true;
+    }
+
+    public function closeEditModal(): void
+    {
+        $this->showEditModal = false;
+        $this->editJadwalId = null;
+    }
+
+    public function saveEditJadwal(): void
+    {
+        abort_unless($this->editJadwalId !== null, 404, 'Slot jadwal tidak ditemukan.');
+
+        $jadwal = Jadwal::whereNull('deleted_at')->find($this->editJadwalId);
+
+        abort_unless($jadwal !== null, 404, 'Slot jadwal tidak ditemukan.');
+        // Dicek ulang di sini, bukan hanya saat modal dibuka: editJadwalId datang dari sisi klien.
+        abort_unless((int) $jadwal->id_kelas === $this->kelasId, 403, 'Slot jadwal ini bukan milik kelas yang sedang dibuka.');
+
+        $validated = $this->validate([
+            'editHari' => ['nullable', 'string', Rule::in(Jadwal::HARI)],
+            'editTanggal' => ['nullable', 'date'],
+            'editJamMulai' => ['nullable', 'date_format:H:i', 'required_with:editJamSelesai'],
+            'editJamSelesai' => ['nullable', 'date_format:H:i', 'required_with:editJamMulai', 'after:editJamMulai'],
+            'editIdRuangan' => ['nullable', 'integer', 'exists:ruangan,id'],
+            'editIdJenisKuliah' => ['nullable', 'integer', 'exists:jenis_kuliah,id'],
+        ], [
+            'editJamMulai.required_with' => 'Jam mulai wajib diisi bila jam selesai diisi.',
+            'editJamSelesai.required_with' => 'Jam selesai wajib diisi bila jam mulai diisi.',
+            'editJamSelesai.after' => 'Jam selesai harus lebih besar dari jam mulai.',
+        ]);
+
+        $jadwal->hari = $validated['editHari'] !== '' && $validated['editHari'] !== null
+            ? strtolower((string) $validated['editHari'])
+            : null;
+        $jadwal->tanggal = $validated['editTanggal'] !== '' ? $validated['editTanggal'] : null;
+        $jadwal->jam_mulai = $validated['editJamMulai'] !== '' ? $validated['editJamMulai'] : null;
+        $jadwal->jam_selesai = $validated['editJamSelesai'] !== '' ? $validated['editJamSelesai'] : null;
+        $jadwal->id_ruangan = $validated['editIdRuangan'] !== '' && $validated['editIdRuangan'] !== null
+            ? (int) $validated['editIdRuangan']
+            : null;
+        $jadwal->id_jenis_kuliah = $validated['editIdJenisKuliah'] !== '' && $validated['editIdJenisKuliah'] !== null
+            ? (int) $validated['editIdJenisKuliah']
+            : null;
+        $jadwal->save();
+
+        unset($this->kelas, $this->jadwalRows);
+        $this->showEditModal = false;
+        $this->editJadwalId = null;
+        session()->flash('status', 'Slot jadwal berhasil diperbarui.');
     }
 
     public function render()

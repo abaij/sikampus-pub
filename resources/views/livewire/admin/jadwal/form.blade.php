@@ -21,8 +21,12 @@
             <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <div>
                     <label class="mb-1.5 block text-sm font-medium text-neutral-700">Filter Prodi</label>
+                    {{-- :live wajib: updatedFilterProdi() di Form.php dan wire:key kelas di bawah
+                         baru berjalan kalau nilainya sampai ke server begitu dipilih, bukan menunggu
+                         request lain (mis. saat mengetik di pencarian dosen). --}}
                     <x-searchable-select
                         model="filterProdi"
+                        :live="true"
                         :options="$prodiOptions"
                         optionLabel="label"
                         placeholder="— Semua prodi —"
@@ -34,6 +38,7 @@
                     <label class="mb-1.5 block text-sm font-medium text-neutral-700">Filter Semester</label>
                     <x-searchable-select
                         model="filterSemester"
+                        :live="true"
                         :options="$semesterOptions"
                         optionLabel="label"
                         placeholder="— Semua semester —"
