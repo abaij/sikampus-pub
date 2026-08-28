@@ -11,6 +11,7 @@ use App\Models\KurikulumMatkul;
 use App\Models\Matkul;
 use App\Models\Prodi;
 use App\Models\Semester;
+use App\Services\KelasAngkatanService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -397,6 +398,9 @@ class Import extends Component
                     $kelompokKelasId = $kelompokKelas->id;
                 }
 
+                // id_angkatan = semester masuk mahasiswa, bukan semester berjalan. Kolom kosong
+                // diturunkan dari kelas mahasiswa yang dipilih; kalau tidak bisa (kelompok kosong
+                // atau angkatannya campuran) baru jatuh ke semester berjalan.
                 $semesterAngkatan = $semester;
                 if ($kodeAngkatan !== '') {
                     $semesterAngkatan = Semester::where('kode', $kodeAngkatan)->first();
@@ -405,6 +409,18 @@ class Import extends Component
 
                         continue;
                     }
+                } else {
+                    $saranAngkatan = KelasAngkatanService::angkatanSaranForKelompokKelas($kelompokKelasId);
+                    if ($saranAngkatan !== null) {
+                        $semesterAngkatan = Semester::find($saranAngkatan) ?? $semester;
+                    }
+                }
+
+                $pesanAngkatan = KelasAngkatanService::pesanKetidakcocokan($kelompokKelasId, (int) $semesterAngkatan->id);
+                if ($pesanAngkatan !== null) {
+                    $errors[] = "Baris {$rowNumber}: {$pesanAngkatan}";
+
+                    continue;
                 }
 
                 $kelasData = [

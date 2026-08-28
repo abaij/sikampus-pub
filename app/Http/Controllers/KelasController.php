@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Dosen;
+use App\Models\Jadwal;
+use App\Models\Kehadiran;
 use App\Models\Kelas;
 use App\Models\KelasDosen;
 use App\Models\KelompokKelas;
@@ -10,13 +12,18 @@ use App\Models\Krs;
 use App\Models\Kurikulum;
 use App\Models\KurikulumMatkul;
 use App\Models\Matkul;
+use App\Models\Perkuliahan;
 use App\Models\Prodi;
 use App\Models\Semester;
+use App\Services\KelasAngkatanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -204,10 +211,26 @@ class KelasController extends Controller
                 if (! array_key_exists('is_mingguan', $data) || $data['is_mingguan'] === null) {
                     $data['is_mingguan'] = true;
                 }
-                if (! array_key_exists('is_active', $data)) {
-                    $data['is_active'] = null;
+                // Kolom kelas.is_active NOT NULL default false — menulis null ke situ ditolak di
+                // strict mode dan diam-diam jadi 0 di mode longgar.
+                if (! array_key_exists('is_active', $data) || $data['is_active'] === null) {
+                    $data['is_active'] = false;
                 }
                 $data['kuota'] = $data['kuota'] ?? 0;
+
+                $pesanAngkatan = KelasAngkatanService::pesanKetidakcocokan(
+                    $data['id_kelompok_kelas'] ?? null,
+                    $data['id_angkatan'] ?? null,
+                );
+                if ($pesanAngkatan !== null) {
+                    $errors[] = [
+                        'index' => $index,
+                        'message' => $pesanAngkatan,
+                        'field' => 'id_angkatan',
+                    ];
+
+                    continue;
+                }
 
                 if ($this->kelasDuplicateExists($data)) {
                     $errors[] = [
@@ -339,7 +362,7 @@ class KelasController extends Controller
         $this->applySemesterKuliahKe($kelas);
 
         // Ambil semua jadwal untuk kelas ini
-        $jadwalList = \App\Models\Jadwal::with([
+        $jadwalList = Jadwal::with([
             'jenisKuliah',
             'ruangan',
             'dosen.dosen',
@@ -353,14 +376,14 @@ class KelasController extends Controller
         $jadwalIds = $jadwalList->pluck('id')->toArray();
 
         // Ambil semua perkuliahan untuk jadwal-jadwal kelas ini
-        $perkuliahanList = \App\Models\Perkuliahan::whereIn('id_jadwal', $jadwalIds)
+        $perkuliahanList = Perkuliahan::whereIn('id_jadwal', $jadwalIds)
             ->orderByRaw('waktu_mulai IS NULL')
             ->orderBy('waktu_mulai', 'asc')
             ->orderBy('id', 'asc')
             ->get();
 
         // Hitung jumlah mahasiswa yang mengambil kelas ini dari KRS
-        $jumlahMahasiswa = \App\Models\Krs::where('id_kelas', $id)
+        $jumlahMahasiswa = Krs::where('id_kelas', $id)
             ->whereNull('deleted_at')
             ->selectRaw('COUNT(DISTINCT id_mahasiswa) as count')
             ->value('count') ?? 0;
@@ -370,7 +393,7 @@ class KelasController extends Controller
         $jumlahHadirPerPerkuliahan = [];
 
         if (! empty($perkuliahanIds)) {
-            $kehadiranCounts = \App\Models\Kehadiran::whereIn('id_perkuliahan', $perkuliahanIds)
+            $kehadiranCounts = Kehadiran::whereIn('id_perkuliahan', $perkuliahanIds)
                 ->whereNull('deleted_at')
                 ->where('status', 'hadir')
                 ->selectRaw('id_perkuliahan, COUNT(DISTINCT id_mhs) as jumlah_hadir')
@@ -514,6 +537,19 @@ class KelasController extends Controller
                 ? $merged['id_kelompok_kelas']
                 : $kelas->id_kelompok_kelas,
         ];
+
+        $pesanAngkatan = KelasAngkatanService::pesanKetidakcocokan(
+            $checkDuplicate['id_kelompok_kelas'] !== null ? (int) $checkDuplicate['id_kelompok_kelas'] : null,
+            (int) $checkDuplicate['id_angkatan'],
+        );
+        if ($pesanAngkatan !== null) {
+            return response()->json([
+                'message' => $pesanAngkatan,
+                'errors' => [
+                    'id_angkatan' => [$pesanAngkatan],
+                ],
+            ], 422);
+        }
 
         if ($this->kelasDuplicateExists($checkDuplicate, (int) $kelas->id)) {
             return response()->json([
@@ -717,10 +753,10 @@ class KelasController extends Controller
         $headerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
-                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['rgb' => '4472C4'],
             ],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
         ];
         $sheet->getStyle('A1:M1')->applyFromArray($headerStyle);
         $sheet->getRowDimension(1)->setRowHeight(40);
@@ -761,7 +797,7 @@ class KelasController extends Controller
             ['I — Kode Dosen PIC  : opsional.'],
             ['J — Tim dosen       : opsional, beberapa kode dosen dipisah koma.'],
             ['K — Nama kelas mahasiswa   : opsional (harus cocok master kelas mahasiswa).'],
-            ['L — Kode angkatan   : opsional; kosong = sama dengan semester berjalan (id_angkatan di DB).'],
+            ['L — Kode angkatan   : semester MASUK mahasiswa (bukan semester berjalan); kosong = diambil dari angkatan mahasiswa di kolom K.'],
             ['M — Aktif           : opsional Ya/Tidak (default Tidak = is_active di tabel kelas).'],
             [''],
             ['File lama (6 kolom: Matkul, Prodi, Semester, Dosen PIC, Kelompok, Angkatan) masih didukung.'],
@@ -1006,6 +1042,9 @@ class KelasController extends Controller
                     $kelompokKelasId = $kelompokKelas->id;
                 }
 
+                // id_angkatan = semester masuk mahasiswa, bukan semester berjalan. Kolom kosong
+                // diturunkan dari kelas mahasiswa yang dipilih; kalau tidak bisa (kelompok kosong
+                // atau angkatannya campuran) baru jatuh ke semester berjalan.
                 $semesterAngkatan = $semester;
                 if ($kodeAngkatan !== '') {
                     $semesterAngkatan = Semester::where('kode', $kodeAngkatan)->first();
@@ -1014,6 +1053,18 @@ class KelasController extends Controller
 
                         continue;
                     }
+                } else {
+                    $saranAngkatan = KelasAngkatanService::angkatanSaranForKelompokKelas($kelompokKelasId);
+                    if ($saranAngkatan !== null) {
+                        $semesterAngkatan = Semester::find($saranAngkatan) ?? $semester;
+                    }
+                }
+
+                $pesanAngkatan = KelasAngkatanService::pesanKetidakcocokan($kelompokKelasId, (int) $semesterAngkatan->id);
+                if ($pesanAngkatan !== null) {
+                    $errors[] = "Baris {$rowNumber}: {$pesanAngkatan}";
+
+                    continue;
                 }
 
                 $kelasData = [
@@ -1112,7 +1163,7 @@ class KelasController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, Kelas>  $collection
+     * @param  Collection<int, Kelas>  $collection
      */
     private function applySemesterKuliahKeToCollection($collection): void
     {

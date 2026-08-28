@@ -10,6 +10,7 @@ use App\Models\KelompokKelas;
 use App\Models\KurikulumMatkul;
 use App\Models\Prodi;
 use App\Models\Semester;
+use App\Services\KelasAngkatanService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -109,6 +110,19 @@ class Form extends Component
     public function updatedIdProdi(): void
     {
         $this->id_kurikulum_matkul = null;
+    }
+
+    /**
+     * Isikan angkatan dari kelompok kelas yang dipilih. id_angkatan = semester masuk mahasiswa,
+     * bukan semester berjalan — salah isi bikin kelas tidak pernah muncul di pengajuan KRS.
+     */
+    public function updatedIdKelompokKelas(): void
+    {
+        $saran = KelasAngkatanService::angkatanSaranForKelompokKelas($this->id_kelompok_kelas);
+        if ($saran !== null) {
+            $this->id_angkatan = $saran;
+            $this->resetErrorBag('id_angkatan');
+        }
     }
 
     private function formatDosenLabel(Dosen $dosen): string
@@ -287,6 +301,16 @@ class Form extends Component
             if ($allowedProdiIds !== null && ! in_array((int) $validated['id_prodi'], $allowedProdiIds, true)) {
                 abort(403, 'Anda tidak memiliki akses ke program studi ini.');
             }
+        }
+
+        $pesanAngkatan = KelasAngkatanService::pesanKetidakcocokan(
+            $validated['id_kelompok_kelas'] ?? null,
+            $validated['id_angkatan'] ?? null,
+        );
+        if ($pesanAngkatan !== null) {
+            $this->addError('id_angkatan', $pesanAngkatan);
+
+            return;
         }
 
         if ($this->kelasDuplicateExists()) {

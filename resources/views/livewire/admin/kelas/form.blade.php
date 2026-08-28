@@ -71,16 +71,19 @@
                         optionLabel="label"
                         placeholder="— Semester referensi angkatan —"
                     />
-                    <p class="mt-1 text-xs text-neutral-500">Biasanya semester masuk mahasiswa; membedakan kelas paralel untuk MK yang sama.</p>
+                    <p class="mt-1 text-xs text-neutral-500">Semester <em>masuk</em> mahasiswa, bukan semester berjalan — terisi otomatis dari kelas mahasiswa di bawah. Kelas hanya muncul di pengajuan KRS mahasiswa yang angkatannya sama.</p>
                     @error('id_angkatan') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
                 </div>
 
                 <div>
                     <label class="mb-1.5 block text-sm font-medium text-neutral-700">Kelas Mahasiswa</label>
+                    {{-- :live supaya updatedIdKelompokKelas() jalan dan mengisi angkatan dari
+                         semester masuk mahasiswa di rombongan ini. --}}
                     <x-searchable-select
                         model="id_kelompok_kelas"
                         :options="$kelompokKelasOptions"
                         placeholder="— Opsional —"
+                        :live="true"
                     />
                     @error('id_kelompok_kelas') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
                 </div>
