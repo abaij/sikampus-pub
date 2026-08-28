@@ -16,6 +16,7 @@ use App\Models\Perkuliahan;
 use App\Models\Prodi;
 use App\Models\Semester;
 use App\Services\KelasAngkatanService;
+use App\Services\KelasKodeGenerator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -205,7 +206,10 @@ class KelasController extends Controller
                 unset($data['dosen_tim_ids']);
 
                 if (($data['kode'] ?? '') === '') {
-                    $data['kode'] = null;
+                    $data['kode'] = KelasKodeGenerator::untukKelas(
+                        $data['id_kelompok_kelas'] ?? null,
+                        $data['id_kurikulum_matkul'] ?? null,
+                    );
                 }
                 $data['jml_pertemuan'] = $data['jml_pertemuan'] ?? 16;
                 if (! array_key_exists('is_mingguan', $data) || $data['is_mingguan'] === null) {
@@ -515,10 +519,6 @@ class KelasController extends Controller
             unset($validated['dosen_tim_ids']);
         }
 
-        if (array_key_exists('kode', $validated) && $validated['kode'] === '') {
-            $validated['kode'] = null;
-        }
-
         $merged = array_merge(
             [
                 'id_kurikulum_matkul' => (int) $kelas->id_kurikulum_matkul,
@@ -528,6 +528,15 @@ class KelasController extends Controller
             ],
             $validated
         );
+
+        // Kode dikosongkan admin -> dibuatkan sistem dari kelompok kelas hasil merge (bukan
+        // hanya yang dikirim), supaya edit yang tidak menyentuh kelompok kelas tetap benar.
+        if (array_key_exists('kode', $validated) && ($validated['kode'] === '' || $validated['kode'] === null)) {
+            $validated['kode'] = KelasKodeGenerator::untukKelas(
+                $merged['id_kelompok_kelas'] !== null ? (int) $merged['id_kelompok_kelas'] : null,
+                (int) $merged['id_kurikulum_matkul'],
+            );
+        }
 
         $checkDuplicate = [
             'id_kurikulum_matkul' => (int) ($merged['id_kurikulum_matkul'] ?? $kelas->id_kurikulum_matkul),

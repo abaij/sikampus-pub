@@ -11,6 +11,7 @@ use App\Models\KurikulumMatkul;
 use App\Models\Prodi;
 use App\Models\Semester;
 use App\Services\KelasAngkatanService;
+use App\Services\KelasKodeGenerator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
@@ -287,8 +288,12 @@ class Form extends Component
     {
         $validated = $this->validate();
 
+        // Kode kosong dibuatkan sistem dari nama kelompok kelas (cadangan: kode mata kuliah).
         if ($validated['kode'] === '') {
-            $validated['kode'] = null;
+            $validated['kode'] = KelasKodeGenerator::untukKelas(
+                $validated['id_kelompok_kelas'] ?? null,
+                $validated['id_kurikulum_matkul'] ?? null,
+            );
         }
         $validated['jml_pertemuan'] = (int) $validated['jml_pertemuan'];
         $validated['kuota'] = (int) $validated['kuota'];
