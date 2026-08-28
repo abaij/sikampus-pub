@@ -3,6 +3,7 @@
 namespace App\Livewire\Admin\KeringananBiaya;
 
 use App\Models\KeringananBiaya;
+use App\Services\KeringananBiayaPersentaseService;
 use App\Support\PanelAccess;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -78,6 +79,36 @@ class Index extends Component
 
         $this->confirmingDeleteId = null;
         $this->resetPage();
+    }
+
+    /**
+     * Hitung ulang nominal keringanan persentase yang sudah disetujui.
+     *
+     * Nominal adalah snapshot saat approve, jadi bisa basi kalau tagihan semester itu bertambah
+     * atau berubah setelahnya. Sengaja manual, bukan otomatis: menghitung ulang diam-diam akan
+     * mengubah angka yang sudah dilihat mahasiswa tanpa jejak.
+     */
+    public function hitungUlang(int $id): void
+    {
+        abort_unless(PanelAccess::can(Auth::user(), 'keringanan biaya', 'update'), 403, 'Anda tidak memiliki hak untuk mengubah keringanan biaya.');
+
+        $row = KeringananBiaya::findOrFail($id);
+
+        if ($row->persentase === null || $row->status !== 'approved') {
+            return;
+        }
+
+        $gagal = KeringananBiayaPersentaseService::terapkanSaatApprove($row);
+        if ($gagal !== null) {
+            session()->flash('error', $gagal);
+
+            return;
+        }
+
+        $row->updated_by = Auth::user()?->name ?? (string) Auth::id();
+        $row->save();
+
+        session()->flash('status', 'Nominal keringanan dihitung ulang: Rp'.number_format((float) $row->nominal, 0, ',', '.').'.');
     }
 
     /**

@@ -71,20 +71,43 @@
                 </div>
                 <div>
                     <label class="mb-1.5 block text-sm font-medium text-neutral-700">Jenis Keringanan Biaya *</label>
-                    <x-searchable-select model="id_jenis_keringanan_biaya" :options="$this->jenisKeringananBiayaOptions" placeholder="— Pilih jenis —" />
+                    {{-- :live supaya isian Nominal ikut berganti saat jenis persentase dipilih. --}}
+                    <x-searchable-select model="id_jenis_keringanan_biaya" :options="$this->jenisKeringananBiayaOptions" placeholder="— Pilih jenis —" :live="true" />
                     @error('id_jenis_keringanan_biaya') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
                 </div>
                 <div>
-                    <label class="mb-1.5 block text-sm font-medium text-neutral-700">Nominal (Rp) *</label>
-                    <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        wire:model="nominal"
-                        placeholder="0"
-                        class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('nominal') ring-2 ring-red-500 @enderror shadow-border"
-                    />
+                    @if ($this->persentaseTerpilih !== null)
+                        {{-- Jenis persentase: nominalnya ditentukan sistem saat disetujui, bukan diketik
+                             admin, supaya persen tidak pernah tersimpan sebagai rupiah. --}}
+                        @php($perkiraan = $this->perkiraanNominal)
+                        <label class="mb-1.5 block text-sm font-medium text-neutral-700">Nominal (Rp)</label>
+                        <div class="w-full rounded-lg bg-neutral-50 px-3 py-2.5 text-sm text-neutral-700 shadow-border">
+                            @if ($perkiraan && $perkiraan['dasar'] > 0)
+                                Rp{{ number_format($perkiraan['nominal'], 0, ',', '.') }}
+                                <span class="text-neutral-500">
+                                    ({{ rtrim(rtrim(number_format($perkiraan['persen'], 2, ',', '.'), '0'), ',') }}% dari
+                                    Rp{{ number_format($perkiraan['dasar'], 0, ',', '.') }})
+                                </span>
+                            @elseif ($perkiraan)
+                                <span class="text-amber-700">Belum ada tagihan pada semester itu — nominal belum bisa dihitung.</span>
+                            @else
+                                <span class="text-neutral-500">Pilih mahasiswa dan semester untuk melihat perkiraan nominal.</span>
+                            @endif
+                        </div>
+                        <p class="mt-1 text-xs text-neutral-500">Dihitung sistem dari total tagihan semester saat status diubah menjadi Disetujui.</p>
+                    @else
+                        <label class="mb-1.5 block text-sm font-medium text-neutral-700">Nominal (Rp) *</label>
+                        <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            wire:model="nominal"
+                            placeholder="0"
+                            class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('nominal') ring-2 ring-red-500 @enderror shadow-border"
+                        />
+                    @endif
                     @error('nominal') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                    @error('status') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
                 </div>
                 <div>
                     <label class="mb-1.5 block text-sm font-medium text-neutral-700">Aturan Akses Keuangan</label>

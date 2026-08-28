@@ -20,6 +20,9 @@ class KeringananBiaya extends Model
         'id_semester',
         'id_aturan_akses_keuangan',
         'nominal',
+        'persentase',
+        'dasar_perhitungan',
+        'dasar_dihitung_pada',
         'keterangan',
         'file_lampiran',
         'status',
@@ -35,6 +38,9 @@ class KeringananBiaya extends Model
 
     protected $casts = [
         'nominal' => 'decimal:2',
+        'persentase' => 'decimal:2',
+        'dasar_perhitungan' => 'decimal:2',
+        'dasar_dihitung_pada' => 'datetime',
         'tanggal_pengajuan' => 'datetime',
         'tanggal_approved' => 'datetime',
     ];

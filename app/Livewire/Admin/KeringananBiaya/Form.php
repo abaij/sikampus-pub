@@ -7,6 +7,7 @@ use App\Models\JenisKeringananBiaya;
 use App\Models\KeringananBiaya;
 use App\Models\Mahasiswa;
 use App\Models\Semester;
+use App\Services\KeringananBiayaPersentaseService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -112,6 +113,30 @@ class Form extends Component
         $this->selectedMahasiswaLabel = '';
     }
 
+    /**
+     * Persen master jenis yang sedang dipilih, atau null kalau jenisnya bertipe rupiah.
+     * Nominal untuk jenis persentase ditentukan sistem saat approve, bukan diketik admin.
+     */
+    #[Computed]
+    public function persentaseTerpilih(): ?float
+    {
+        return KeringananBiayaPersentaseService::persentaseMaster($this->id_jenis_keringanan_biaya);
+    }
+
+    /** Perkiraan rupiah yang akan tersimpan saat disetujui, untuk ditampilkan di form. */
+    #[Computed]
+    public function perkiraanNominal(): ?array
+    {
+        $persen = $this->persentaseTerpilih;
+        if ($persen === null || ! $this->id_mahasiswa || ! $this->id_semester) {
+            return null;
+        }
+
+        $dasar = KeringananBiayaPersentaseService::dasarPerhitungan($this->id_mahasiswa, $this->id_semester);
+
+        return ['persen' => $persen, 'dasar' => $dasar, 'nominal' => round($dasar * $persen / 100, 2)];
+    }
+
     #[Computed]
     public function jenisKeringananBiayaOptions(): array
     {
@@ -170,7 +195,10 @@ class Form extends Component
             'id_jenis_keringanan_biaya' => ['required', 'integer', 'exists:jenis_keringanan_biaya,id'],
             'id_semester' => ['required', 'integer', 'exists:semester,id'],
             'id_aturan_akses_keuangan' => ['nullable', 'integer', 'exists:aturan_akses_keuangan,id'],
-            'nominal' => ['required', 'numeric', 'min:0'],
+            // Jenis persentase: nominal dihitung sistem saat approve, jadi isian admin diabaikan.
+            'nominal' => $this->persentaseTerpilih !== null
+                ? ['nullable', 'numeric', 'min:0']
+                : ['required', 'numeric', 'min:0'],
             'keterangan' => ['nullable', 'string'],
             'status' => ['required', 'string', Rule::in(['pending', 'approved', 'rejected'])],
             'tanggal_pengajuan' => ['nullable', 'date'],
@@ -193,10 +221,14 @@ class Form extends Component
     /**
      * Sama persis dengan KeringananBiayaController::applyStatusFields.
      */
-    private function applyStatusFields(KeringananBiaya $row, string $status): void
+    private function applyStatusFields(KeringananBiaya $row, string $status): ?string
     {
         $row->status = $status;
         if ($status === 'approved') {
+            $gagal = KeringananBiayaPersentaseService::terapkanSaatApprove($row);
+            if ($gagal !== null) {
+                return $gagal;
+            }
             $row->tanggal_approved = now();
             $user = Auth::user();
             $row->approved_by = $user?->name ?? (string) $user?->id;
@@ -204,6 +236,8 @@ class Form extends Component
             $row->tanggal_approved = null;
             $row->approved_by = null;
         }
+
+        return null;
     }
 
     /**
@@ -245,7 +279,18 @@ class Form extends Component
         $row->id_jenis_keringanan_biaya = $validated['id_jenis_keringanan_biaya'];
         $row->id_semester = $validated['id_semester'];
         $row->id_aturan_akses_keuangan = $validated['id_aturan_akses_keuangan'];
-        $row->nominal = $validated['nominal'];
+        $persenTerpilih = $this->persentaseTerpilih;
+        if ($persenTerpilih !== null) {
+            // Snapshot persen diambil dari master saat baris dibuat/jenisnya diganti; nominalnya
+            // diisi KeringananBiayaPersentaseService saat status jadi approved.
+            $row->persentase = $persenTerpilih;
+            $row->nominal = $row->nominal ?? 0;
+        } else {
+            $row->persentase = null;
+            $row->dasar_perhitungan = null;
+            $row->dasar_dihitung_pada = null;
+            $row->nominal = $validated['nominal'];
+        }
         $row->keterangan = $validated['keterangan'];
 
         if ($this->keringananBiayaId && $validated['tanggal_pengajuan']) {
@@ -263,7 +308,12 @@ class Form extends Component
             $row->updated_by = $userName;
         }
 
-        $this->applyStatusFields($row, $validated['status']);
+        $gagalStatus = $this->applyStatusFields($row, $validated['status']);
+        if ($gagalStatus !== null) {
+            $this->addError('status', $gagalStatus);
+
+            return;
+        }
         $row->save();
 
         session()->flash('status', 'Keringanan biaya berhasil disimpan.');

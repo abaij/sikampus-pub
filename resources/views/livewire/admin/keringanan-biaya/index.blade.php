@@ -84,7 +84,19 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3 text-neutral-600">{{ $item->jenisKeringananBiaya->nama ?? '—' }}</td>
-                            <td class="px-4 py-3 text-right font-semibold text-neutral-900">Rp{{ number_format((float) $item->nominal, 0, ',', '.') }}</td>
+                            <td class="px-4 py-3 text-right font-semibold text-neutral-900">
+                                Rp{{ number_format((float) $item->nominal, 0, ',', '.') }}
+                                @if ($item->persentase !== null)
+                                    <span class="block text-xs font-normal text-neutral-500">
+                                        {{ rtrim(rtrim(number_format((float) $item->persentase, 2, ',', '.'), '0'), ',') }}%
+                                        @if ($item->dasar_perhitungan !== null)
+                                            dari Rp{{ number_format((float) $item->dasar_perhitungan, 0, ',', '.') }}
+                                        @else
+                                            — dihitung saat disetujui
+                                        @endif
+                                    </span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3">
                                 @if ($item->status === 'approved')
                                     <span class="inline-flex rounded-lg bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-800">Disetujui</span>
@@ -96,6 +108,18 @@
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <div class="inline-flex items-center gap-1">
+                                    @if ($item->persentase !== null && $item->status === 'approved')
+                                        <button
+                                            type="button"
+                                            wire:click="hitungUlang({{ $item->id }})"
+                                            class="inline-flex items-center justify-center rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
+                                            title="Hitung ulang nominal dari tagihan semester saat ini"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-4">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356M2.985 19.644v-4.992h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182" />
+                                            </svg>
+                                        </button>
+                                    @endif
                                     @if ($item->file_lampiran)
                                         <a
                                             href="{{ $item->file_lampiran_url }}"

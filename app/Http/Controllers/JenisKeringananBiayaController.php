@@ -29,9 +29,10 @@ class JenisKeringananBiayaController extends Controller
 
     public function indexAktifForMahasiswa(): JsonResponse
     {
+        // Tidak lagi disaring `nominal = 0`: persentase kini diselesaikan jadi rupiah saat
+        // approve (KeringananBiayaPersentaseService), bukan disalin mentah saat pengajuan.
         $data = JenisKeringananBiaya::query()
             ->where('is_active', true)
-            ->where('nominal', 0)
             ->orderBy('nama')
             ->get(['id', 'nama', 'is_persentase', 'nominal', 'keterangan']);
 

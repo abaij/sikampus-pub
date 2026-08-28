@@ -51,14 +51,17 @@ class Index extends Component
     }
 
     /**
-     * Sama persis dengan JenisKeringananBiayaController::indexAktifForMahasiswa — hanya jenis
-     * dengan nominal 0 di master yang tersedia untuk pengajuan mandiri mahasiswa.
+     * Sama persis dengan JenisKeringananBiayaController::indexAktifForMahasiswa.
+     *
+     * Dulu disaring `nominal = 0` karena submit menyalin nominal master apa adanya, sehingga
+     * jenis persentase akan tersimpan sebagai rupiah (10% -> Rp 10). Sekarang persentase
+     * diselesaikan saat approve oleh KeringananBiayaPersentaseService, jadi seluruh jenis aktif
+     * boleh diajukan.
      */
     #[Computed]
     public function jenisOptions()
     {
         return JenisKeringananBiaya::where('is_active', true)
-            ->where('nominal', 0)
             ->orderBy('nama')
             ->get(['id', 'nama', 'is_persentase', 'nominal', 'keterangan']);
     }
@@ -106,7 +109,10 @@ class Index extends Component
             return;
         }
 
-        $nominal = (float) $this->selectedJenis->nominal;
+        // Jenis persentase disimpan dengan nominal 0 dan snapshot persennya; rupiahnya baru
+        // dihitung saat admin menyetujui. Jenis rupiah tetap memakai nominal master.
+        $persentase = $this->selectedJenis->is_persentase ? (float) $this->selectedJenis->nominal : null;
+        $nominal = $persentase === null ? (float) $this->selectedJenis->nominal : 0.0;
 
         $duplicate = KeringananBiaya::where('id_jenis_keringanan_biaya', (int) $this->idJenis)
             ->where('id_mahasiswa', $this->mahasiswaId)
@@ -132,6 +138,7 @@ class Index extends Component
             'id_mahasiswa' => $this->mahasiswaId,
             'id_semester' => (int) $this->idSemester,
             'nominal' => $nominal,
+            'persentase' => $persentase,
             'keterangan' => trim($this->keterangan) !== '' ? $this->keterangan : null,
             'file_lampiran' => $path,
             'status' => 'pending',

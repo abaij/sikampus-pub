@@ -117,14 +117,17 @@ it('shows a mahasiswa their own pembayaran history only', function () {
     $response->assertDontSee('PAY-OTHER');
 });
 
-it('lists only jenis keringanan biaya with nominal 0 as pengajuan options', function () {
+it('lists every active jenis keringanan biaya as pengajuan options', function () {
+    // Dulu daftar ini disaring `nominal = 0` karena submit menyalin nominal master mentah-mentah.
+    // Persentase kini diselesaikan saat approve, jadi seluruh jenis aktif boleh diajukan.
     [$user] = biayaMahasiswaUser();
     JenisKeringananBiaya::factory()->create(['nama' => 'Beasiswa Prestasi', 'nominal' => 0, 'is_active' => true]);
     JenisKeringananBiaya::factory()->create(['nama' => 'Diskon Tetap 50%', 'nominal' => 50, 'is_active' => true]);
+    JenisKeringananBiaya::factory()->create(['nama' => 'Sudah Ditutup', 'nominal' => 0, 'is_active' => false]);
 
     Livewire::actingAs($user)
         ->test(KeringananBiayaIndex::class)
-        ->assertSet('jenisOptions', fn ($options) => $options->pluck('nama')->all() === ['Beasiswa Prestasi']);
+        ->assertSet('jenisOptions', fn ($options) => $options->pluck('nama')->all() === ['Beasiswa Prestasi', 'Diskon Tetap 50%']);
 });
 
 it('lets a mahasiswa submit a keringanan biaya pengajuan', function () {

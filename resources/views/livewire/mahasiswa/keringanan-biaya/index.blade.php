@@ -110,8 +110,14 @@
                             <div class="mt-2 space-y-1 text-xs text-neutral-600">
                                 <p>
                                     <span class="font-medium text-neutral-700">Nominal pengajuan: </span>
-                                    {{ $selectedJenis->is_persentase ? $selectedJenis->nominal.'%' : $formatIdr($selectedJenis->nominal) }}
-                                    <span class="text-neutral-500">(mengikuti master jenis)</span>
+                                    {{ $selectedJenis->is_persentase ? rtrim(rtrim(number_format((float) $selectedJenis->nominal, 2, ',', '.'), '0'), ',').'%' : $formatIdr($selectedJenis->nominal) }}
+                                    <span class="text-neutral-500">
+                                        @if ($selectedJenis->is_persentase)
+                                            (dari total tagihan semester, dihitung saat pengajuan disetujui)
+                                        @else
+                                            (mengikuti master jenis)
+                                        @endif
+                                    </span>
                                 </p>
                                 @if ($selectedJenis->keterangan)
                                     <p class="text-neutral-500">{{ $selectedJenis->keterangan }}</p>
@@ -127,7 +133,7 @@
 
                     @if ($this->jenisOptions->isEmpty())
                         <p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            Tidak ada jenis keringanan yang dapat dipilih. Hanya jenis dengan nominal 0 di master yang ditampilkan untuk pengajuan mahasiswa.
+                            Belum ada jenis keringanan aktif yang dapat dipilih. Hubungi bagian keuangan.
                         </p>
                     @endif
 

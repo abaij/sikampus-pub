@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\JenisKeringananBiaya;
 use App\Models\KeringananBiaya;
 use App\Models\Mahasiswa;
+use App\Services\KeringananBiayaPersentaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -80,7 +82,13 @@ class KeringananBiayaController extends Controller
         if ($path) {
             $row->file_lampiran = $path;
         }
-        $this->applyStatusFields($request, $row, $data['status'] ?? 'pending');
+        $gagalStatus = $this->applyStatusFields($request, $row, $data['status'] ?? 'pending');
+        if ($gagalStatus !== null) {
+            return response()->json([
+                'message' => $gagalStatus,
+                'errors' => ['status' => [$gagalStatus]],
+            ], 422);
+        }
         if ($request->user()) {
             $row->created_by = $request->user()->name ?? (string) $request->user()->id;
         }
@@ -142,7 +150,13 @@ class KeringananBiayaController extends Controller
 
         $keringanan_biaya->fill($data);
         $status = $data['status'] ?? $keringanan_biaya->status;
-        $this->applyStatusFields($request, $keringanan_biaya, $status);
+        $gagalStatus = $this->applyStatusFields($request, $keringanan_biaya, $status);
+        if ($gagalStatus !== null) {
+            return response()->json([
+                'message' => $gagalStatus,
+                'errors' => ['status' => [$gagalStatus]],
+            ], 422);
+        }
         $keringanan_biaya->save();
 
         $keringanan_biaya->load([
@@ -232,13 +246,27 @@ class KeringananBiayaController extends Controller
             'id_jenis_keringanan_biaya' => ['required', 'integer', 'exists:jenis_keringanan_biaya,id'],
             'id_semester' => ['required', 'integer', 'exists:semester,id'],
             'id_aturan_akses_keuangan' => ['nullable', 'integer', 'exists:aturan_akses_keuangan,id'],
-            'nominal' => ['required', 'numeric', 'min:0'],
             'keterangan' => ['nullable', 'string'],
             'file_lampiran' => ['nullable', 'file', 'max:5120', 'mimes:pdf,jpg,jpeg,png,webp'],
         ]);
 
         $data = Arr::except($validated, ['file_lampiran']);
         $data['id_mahasiswa'] = $mahasiswa->id;
+
+        // Nominal TIDAK diambil dari request: mahasiswa tidak boleh menentukan besaran
+        // keringanannya sendiri. Jenis persentase disimpan nominal 0 + snapshot persennya dan
+        // baru dihitung saat approve; jenis rupiah memakai nominal master apa adanya.
+        $jenis = JenisKeringananBiaya::where('is_active', true)
+            ->find((int) $data['id_jenis_keringanan_biaya']);
+        if (! $jenis) {
+            return response()->json([
+                'message' => 'Jenis keringanan tidak tersedia untuk pengajuan mandiri.',
+                'errors' => ['id_jenis_keringanan_biaya' => ['Jenis keringanan tidak tersedia.']],
+            ], 422);
+        }
+
+        $data['persentase'] = $jenis->is_persentase ? (float) $jenis->nominal : null;
+        $data['nominal'] = $jenis->is_persentase ? 0 : (float) $jenis->nominal;
 
         if ($this->duplicateTripleExists(
             (int) $data['id_jenis_keringanan_biaya'],
@@ -258,7 +286,7 @@ class KeringananBiayaController extends Controller
         if ($path) {
             $row->file_lampiran = $path;
         }
-        $this->applyStatusFields($request, $row, 'pending');
+        $this->applyStatusFields($request, $row, 'pending'); // pending: tidak pernah gagal
         if ($request->user()) {
             $row->created_by = $request->user()->name ?? (string) $request->user()->id;
         }
@@ -343,15 +371,30 @@ class KeringananBiayaController extends Controller
         return $q->exists();
     }
 
-    private function applyStatusFields(Request $request, KeringananBiaya $model, string $status): void
+    /**
+     * Sama persis dengan App\Livewire\Admin\KeringananBiaya\Form::applyStatusFields.
+     *
+     * Approve adalah titik di mana keringanan persentase berubah jadi rupiah — nominal-nya
+     * dihitung dari total tagihan semester lalu di-snapshot, karena hanya rupiah yang dimengerti
+     * KeringananBiayaKreditService.
+     *
+     * @return string|null pesan kegagalan, null kalau berhasil
+     */
+    private function applyStatusFields(Request $request, KeringananBiaya $model, string $status): ?string
     {
         $model->status = $status;
         if ($status === 'approved') {
+            $gagal = KeringananBiayaPersentaseService::terapkanSaatApprove($model);
+            if ($gagal !== null) {
+                return $gagal;
+            }
             $model->tanggal_approved = now();
             $model->approved_by = $request->user()->name ?? (string) ($request->user()->id ?? '');
         } else {
             $model->tanggal_approved = null;
             $model->approved_by = null;
         }
+
+        return null;
     }
 }
