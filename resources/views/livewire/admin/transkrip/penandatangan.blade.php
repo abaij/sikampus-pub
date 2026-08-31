@@ -61,7 +61,7 @@
                     @error('nip') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
                 </div>
 
-                <div class="sm:col-span-2">
+                <div>
                     <label class="mb-1.5 block text-sm font-medium text-neutral-700">Kota Penerbitan</label>
                     <input type="text" wire:model="kotaTerbit" placeholder="Kab. Bogor" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('kotaTerbit') ring-2 ring-red-500 @enderror shadow-border" />
                     <p class="mt-1.5 text-xs text-neutral-500">
@@ -70,14 +70,36 @@
                     </p>
                     @error('kotaTerbit') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
                 </div>
+
+                <div>
+                    <label class="mb-1.5 block text-sm font-medium text-neutral-700">Tanggal Terbit</label>
+                    {{-- :live supaya pratinjau di bawah ikut berubah saat tanggalnya diganti. --}}
+                    <input type="date" wire:model.live="tanggalTerbit" class="w-full rounded-lg px-3 py-2.5 text-sm outline-none focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 @error('tanggalTerbit') ring-2 ring-red-500 @enderror shadow-border" />
+                    <p class="mt-1.5 text-xs text-neutral-500">
+                        Tanggal resmi yang tercetak di seluruh transkrip. Kalau dikosongkan, dipakai
+                        tanggal saat transkrip dicetak.
+                    </p>
+                    @error('tanggalTerbit') <p class="mt-1.5 text-sm text-red-600">{{ $message }}</p> @enderror
+                </div>
             </div>
         </div>
 
         <div class="rounded-2xl bg-white p-6 shadow-border">
             <h2 class="text-sm font-semibold text-neutral-900">Pratinjau blok tanda tangan</h2>
             <div class="mt-3 rounded-xl bg-neutral-50 p-6 font-serif text-sm leading-relaxed text-neutral-800">
-                <p>Diterbitkan di {{ trim($kotaTerbit) !== '' ? $kotaTerbit : '…' }}, {{ now()->format('d/m/Y') }}</p>
-                <p class="italic text-neutral-500">Issued in {{ trim($kotaTerbit) !== '' ? $kotaTerbit : '…' }}, {{ now()->format('d/m/Y') }}</p>
+                @php
+                    // Cermin App\Services\TranskripPdfGenerator::payload(): kosong/tidak valid = hari ini.
+                    try {
+                        $tglPratinjau = trim($tanggalTerbit) !== '' ? new DateTimeImmutable($tanggalTerbit) : now();
+                    } catch (Exception) {
+                        $tglPratinjau = now();
+                    }
+                    $bulanId = [1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+                    $tglId = $tglPratinjau->format('j').' '.$bulanId[(int) $tglPratinjau->format('n')].' '.$tglPratinjau->format('Y');
+                    $tglEn = $tglPratinjau->format('j F Y');
+                @endphp
+                <p>Diterbitkan di {{ trim($kotaTerbit) !== '' ? $kotaTerbit : '…' }}, {{ $tglId }}</p>
+                <p class="italic text-neutral-500">Issued in {{ trim($kotaTerbit) !== '' ? $kotaTerbit : '…' }}, {{ $tglEn }}</p>
                 <p class="mt-4">{{ trim($jabatan) !== '' ? $jabatan : '(jabatan belum diisi)' }}</p>
                 @if (trim($jabatanEn) !== '')
                     <p class="italic text-neutral-500">{{ $jabatanEn }}</p>

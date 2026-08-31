@@ -25,6 +25,9 @@ class Penandatangan extends Component
 
     public string $kotaTerbit = '';
 
+    /** Format Y-m-d (terikat <input type="date">); kosong = transkrip memakai tanggal hari ini. */
+    public string $tanggalTerbit = '';
+
     public function mount(): void
     {
         $pengaturan = TranskripPdfGenerator::pengaturanPenandatangan();
@@ -34,6 +37,7 @@ class Penandatangan extends Component
         $this->namaPejabat = $pengaturan['nama'];
         $this->nip = $pengaturan['nip'];
         $this->kotaTerbit = $pengaturan['kota_terbit'];
+        $this->tanggalTerbit = $pengaturan['tanggal_terbit'];
     }
 
     protected function rules(): array
@@ -46,6 +50,7 @@ class Penandatangan extends Component
             'namaPejabat' => ['nullable', 'string', 'max:150'],
             'nip' => ['nullable', 'string', 'max:50'],
             'kotaTerbit' => ['nullable', 'string', 'max:100'],
+            'tanggalTerbit' => ['nullable', 'date'],
         ];
     }
 
@@ -57,6 +62,7 @@ class Penandatangan extends Component
             'namaPejabat' => 'nama pejabat',
             'nip' => 'NIP',
             'kotaTerbit' => 'kota penerbitan',
+            'tanggalTerbit' => 'tanggal terbit',
         ];
     }
 
@@ -72,6 +78,7 @@ class Penandatangan extends Component
             $keys['nama'] => trim($this->namaPejabat),
             $keys['nip'] => trim($this->nip),
             $keys['kota_terbit'] => trim($this->kotaTerbit),
+            $keys['tanggal_terbit'] => trim($this->tanggalTerbit),
         ];
 
         foreach ($values as $key => $value) {

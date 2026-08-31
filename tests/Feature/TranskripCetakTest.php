@@ -82,6 +82,7 @@ it('pengaturan penandatangan tersimpan dan terbaca kembali oleh generator transk
         ->set('namaPejabat', 'Dr. Contoh, M.Kom.')
         ->set('nip', '19800101 200501 1 001')
         ->set('kotaTerbit', 'Kab. Bogor')
+        ->set('tanggalTerbit', '2026-03-17')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -92,6 +93,61 @@ it('pengaturan penandatangan tersimpan dan terbaca kembali oleh generator transk
     expect($pengaturan['jabatan_en'])->toBe('Rector Universitas Contoh');
     expect($pengaturan['nip'])->toBe('19800101 200501 1 001');
     expect($pengaturan['kota_terbit'])->toBe('Kab. Bogor');
+    expect($pengaturan['tanggal_terbit'])->toBe('2026-03-17');
+});
+
+it('memakai tanggal terbit dari pengaturan, bukan tanggal saat transkrip dicetak', function () {
+    $mahasiswa = Mahasiswa::factory()->create();
+    Setting::updateOrCreate(['key' => 'app_transkrip_tanggal_terbit'], ['value' => '2026-03-17']);
+
+    $payload = (new TranskripPdfGenerator)->payload($mahasiswa);
+
+    expect($payload['tanggal_terbit_id'])->toBe('17 Maret 2026')
+        ->and($payload['tanggal_terbit_en'])->toBe('17 March 2026');
+});
+
+it('jatuh ke tanggal hari ini kalau tanggal terbit belum diisi', function () {
+    $mahasiswa = Mahasiswa::factory()->create();
+    Setting::updateOrCreate(['key' => 'app_transkrip_tanggal_terbit'], ['value' => '']);
+
+    $payload = (new TranskripPdfGenerator)->payload($mahasiswa);
+
+    expect($payload['tanggal_terbit_id'])->toBe(
+        now()->format('j').' '.[1 => 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli',
+            'Agustus', 'September', 'Oktober', 'November', 'Desember'][(int) now()->format('n')].' '.now()->format('Y')
+    );
+});
+
+it('mengabaikan tanggal terbit yang tidak bisa dibaca dan memakai hari ini', function () {
+    $mahasiswa = Mahasiswa::factory()->create();
+    // Nilai lama/aneh di tabel settings tidak boleh menggagalkan seluruh cetakan.
+    Setting::updateOrCreate(['key' => 'app_transkrip_tanggal_terbit'], ['value' => 'bukan tanggal']);
+
+    $payload = (new TranskripPdfGenerator)->payload($mahasiswa);
+
+    expect($payload['tanggal_terbit_id'])->toContain(now()->format('Y'));
+});
+
+it('menolak tanggal terbit yang bukan tanggal di form pengaturan', function () {
+    $admin = adminUser();
+
+    Livewire::actingAs($admin)
+        ->test(Penandatangan::class)
+        ->set('tanggalTerbit', 'bukan tanggal')
+        ->call('save')
+        ->assertHasErrors('tanggalTerbit');
+});
+
+it('pratinjau blok tanda tangan memakai tanggal terbit yang tersimpan', function () {
+    $admin = adminUser();
+    Setting::updateOrCreate(['key' => 'app_transkrip_tanggal_terbit'], ['value' => '2026-03-17']);
+    Setting::updateOrCreate(['key' => 'app_transkrip_kota_terbit'], ['value' => 'Kab. Bogor']);
+
+    Livewire::actingAs($admin)
+        ->test(Penandatangan::class)
+        ->assertSet('tanggalTerbit', '2026-03-17')
+        ->assertSee('Diterbitkan di Kab. Bogor, 17 Maret 2026')
+        ->assertSee('Issued in Kab. Bogor, 17 March 2026');
 });
 
 it('halaman pengaturan penandatangan dapat dibuka admin', function () {
@@ -100,7 +156,8 @@ it('halaman pengaturan penandatangan dapat dibuka admin', function () {
     $this->actingAs($admin)
         ->get(route('admin.akademik.penandatangan-transkrip'))
         ->assertOk()
-        ->assertSee('Penandatangan Transkrip');
+        ->assertSee('Penandatangan Transkrip')
+        ->assertSee('Tanggal Terbit');
 });
 
 // Dipisah dari test di atas: actingAs() bertahan sepanjang satu test, jadi permintaan "tamu"

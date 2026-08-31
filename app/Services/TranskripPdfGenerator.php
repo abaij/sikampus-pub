@@ -56,10 +56,11 @@ class TranskripPdfGenerator
         'nama' => 'app_transkrip_nama_pejabat',
         'nip' => 'app_transkrip_nip',
         'kota_terbit' => 'app_transkrip_kota_terbit',
+        'tanggal_terbit' => 'app_transkrip_tanggal_terbit',
     ];
 
     /**
-     * @return array{jabatan: string, jabatan_en: string, nama: string, nip: string, kota_terbit: string}
+     * @return array{jabatan: string, jabatan_en: string, nama: string, nip: string, kota_terbit: string, tanggal_terbit: string}
      */
     public static function pengaturanPenandatangan(): array
     {
@@ -100,6 +101,11 @@ class TranskripPdfGenerator
         $kotaTerbit = $pengaturan['kota_terbit'] !== ''
             ? $pengaturan['kota_terbit']
             : trim((string) $kop->get('app_univ_city'));
+
+        // Tanggal terbit diambil dari pengaturan penandatangan supaya seluruh transkrip yang
+        // dicetak memakai tanggal resmi yang sama, bukan tanggal saat tombol cetak ditekan.
+        // Kosong = jatuh ke hari ini, sejalan dengan field pengaturan lain yang semuanya opsional.
+        $tglTerbit = $this->parseTanggal($pengaturan['tanggal_terbit']) ?? now();
 
         $jenjang = $mahasiswa->prodi?->jenjang;
         $jenjangLabel = $jenjang
@@ -149,8 +155,8 @@ class TranskripPdfGenerator
             'judul_ta' => trim((string) ($yudisium?->judul_skripsi ?? '')),
 
             'kota_terbit' => $kotaTerbit,
-            'tanggal_terbit_id' => $this->tanggalId(now()),
-            'tanggal_terbit_en' => $this->tanggalEn(now()),
+            'tanggal_terbit_id' => $this->tanggalId($tglTerbit),
+            'tanggal_terbit_en' => $this->tanggalEn($tglTerbit),
             'jabatan' => $pengaturan['jabatan'],
             'jabatan_en' => $pengaturan['jabatan_en'],
             'pejabat' => $pengaturan['nama'],
