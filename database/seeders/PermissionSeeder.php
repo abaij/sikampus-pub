@@ -281,6 +281,17 @@ class PermissionSeeder extends Seeder
             'delete jenis mata kuliah',
         ];
 
+        // Mata kuliah: index/create/edit/show sebagai rute, hapus/pulihkan/hapus-permanen lewat
+        // method Livewire di Index (restore() dan forceDeleteMatkul() tidak punya rute sendiri —
+        // lihat catatan di App\Livewire\Admin\Matkul\Index). Import dianggap 'create' (data massal),
+        // template/export tetap 'view'.
+        $matkulGranularPermissions = [
+            'view mata kuliah',
+            'create mata kuliah',
+            'update mata kuliah',
+            'delete mata kuliah',
+        ];
+
         // Buat permissions untuk menu administrasi
         $administrasiPermissions = [
             'view administrasi',
@@ -353,6 +364,7 @@ class PermissionSeeder extends Seeder
             $jenisDaftarGranularPermissions,
             $statusAkademikGranularPermissions,
             $jenisMatkulGranularPermissions,
+            $matkulGranularPermissions,
             $administrasiPermissions,
             $laporanPermissions,
             $pengaturanPermissions
@@ -406,6 +418,7 @@ class PermissionSeeder extends Seeder
                 'view jenis pendaftaran',
                 'view status akademik',
                 'view jenis mata kuliah',
+                'view mata kuliah',
             ]
         ));
 

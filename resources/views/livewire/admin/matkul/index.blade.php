@@ -22,20 +22,22 @@
         <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
         Download Template
     </a>
-    <a
-        href="{{ route('admin.akademik.matkul.import') }}"
-        class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
-    >
-        <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
-        Import Mata Kuliah
-    </a>
-    <a
-        href="{{ route('admin.akademik.matkul.create') }}"
-        class="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
-    >
-        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-        Tambah Mata Kuliah
-    </a>
+    @if (\App\Support\PanelAccess::can(auth()->user(), 'mata kuliah', 'create'))
+        <a
+            href="{{ route('admin.akademik.matkul.import') }}"
+            class="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-medium text-neutral-700 shadow-border transition hover:bg-neutral-50"
+        >
+            <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
+            Import Mata Kuliah
+        </a>
+        <a
+            href="{{ route('admin.akademik.matkul.create') }}"
+            class="inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
+        >
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+            Tambah Mata Kuliah
+        </a>
+    @endif
 @endsection
 
 <div>
@@ -167,22 +169,24 @@
                             <td class="px-4 py-3 text-right">
                                 <div class="inline-flex items-center gap-1">
                                     @if ($matkul->trashed())
-                                        <button
-                                            type="button"
-                                            wire:click="restore({{ $matkul->id }})"
-                                            class="inline-flex items-center justify-center rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700"
-                                            title="Pulihkan"
-                                        >
-                                            <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            wire:click="confirmForceDelete({{ $matkul->id }})"
-                                            class="inline-flex items-center justify-center rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 hover:text-rose-800"
-                                            title="Hapus Permanen"
-                                        >
-                                            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
-                                        </button>
+                                        @if (\App\Support\PanelAccess::can(auth()->user(), 'mata kuliah', 'delete'))
+                                            <button
+                                                type="button"
+                                                wire:click="restore({{ $matkul->id }})"
+                                                class="inline-flex items-center justify-center rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700"
+                                                title="Pulihkan"
+                                            >
+                                                <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                wire:click="confirmForceDelete({{ $matkul->id }})"
+                                                class="inline-flex items-center justify-center rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 hover:text-rose-800"
+                                                title="Hapus Permanen"
+                                            >
+                                                <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                                            </button>
+                                        @endif
                                     @else
                                         <a
                                             href="{{ route('admin.akademik.matkul.show', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
@@ -191,21 +195,25 @@
                                         >
                                             <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
                                         </a>
-                                        <a
-                                            href="{{ route('admin.akademik.matkul.edit', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
-                                            class="inline-flex items-center justify-center rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
-                                            title="Ubah"
-                                        >
-                                            <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-                                        </a>
-                                        <button
-                                            type="button"
-                                            wire:click="confirmDelete({{ $matkul->id }})"
-                                            class="inline-flex items-center justify-center rounded-lg p-2 text-rose-500 transition hover:bg-rose-50 hover:text-rose-700"
-                                            title="Hapus"
-                                        >
-                                            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
-                                        </button>
+                                        @if (\App\Support\PanelAccess::can(auth()->user(), 'mata kuliah', 'update'))
+                                            <a
+                                                href="{{ route('admin.akademik.matkul.edit', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
+                                                class="inline-flex items-center justify-center rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
+                                                title="Ubah"
+                                            >
+                                                <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+                                            </a>
+                                        @endif
+                                        @if (\App\Support\PanelAccess::can(auth()->user(), 'mata kuliah', 'delete'))
+                                            <button
+                                                type="button"
+                                                wire:click="confirmDelete({{ $matkul->id }})"
+                                                class="inline-flex items-center justify-center rounded-lg p-2 text-rose-500 transition hover:bg-rose-50 hover:text-rose-700"
+                                                title="Hapus"
+                                            >
+                                                <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                                            </button>
+                                        @endif
                                     @endif
                                 </div>
                             </td>

@@ -260,6 +260,15 @@ return [
         'jenis-matkul.create' => 'create jenis mata kuliah',
         'jenis-matkul.edit' => 'update jenis mata kuliah',
 
+        // index/show/template/import (tidak ada entri lebih spesifik untuk show/template — semua
+        // aksi baca). Hapus/pulihkan/hapus-permanen tidak lewat rute sendiri (method Livewire di
+        // halaman index), dijaga langsung di App\Livewire\Admin\Matkul\Index. Import dianggap
+        // 'create' (data massal).
+        'akademik.matkul' => 'view mata kuliah',
+        'akademik.matkul.create' => 'create mata kuliah',
+        'akademik.matkul.edit' => 'update mata kuliah',
+        'akademik.matkul.import' => 'create mata kuliah',
+
         'status-akademik.index' => 'view status akademik',
         'status-akademik.create' => 'create status akademik',
         'status-akademik.edit' => 'update status akademik',

@@ -5,6 +5,7 @@ namespace App\Livewire\Admin\Matkul;
 use App\Models\JenisMatkul;
 use App\Models\Matkul;
 use App\Models\Prodi;
+use App\Support\PanelAccess;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Url;
@@ -79,6 +80,11 @@ class Index extends Component
 
     public function confirmDelete(int $id): void
     {
+        // Tombol pemicu ini disembunyikan di Blade untuk user tanpa hak hapus, tapi method
+        // Livewire tetap bisa dipanggil langsung lewat request yang dipalsukan — pengecekan di
+        // sini dan di delete() adalah otoritas sebenarnya, bukan sekadar UI.
+        abort_unless(PanelAccess::can(Auth::user(), 'mata kuliah', 'delete'), 403, 'Anda tidak memiliki hak untuk menghapus mata kuliah.');
+
         $this->confirmingDeleteId = $id;
     }
 
@@ -92,6 +98,8 @@ class Index extends Component
      */
     public function delete(): void
     {
+        abort_unless(PanelAccess::can(Auth::user(), 'mata kuliah', 'delete'), 403, 'Anda tidak memiliki hak untuk menghapus mata kuliah.');
+
         if (! $this->confirmingDeleteId) {
             return;
         }
@@ -120,6 +128,8 @@ class Index extends Component
      */
     public function restore(int $id): void
     {
+        abort_unless(PanelAccess::can(Auth::user(), 'mata kuliah', 'delete'), 403, 'Anda tidak memiliki hak untuk memulihkan mata kuliah.');
+
         $matkul = Matkul::onlyTrashed()->findOrFail($id);
 
         $user = Auth::user();
@@ -152,6 +162,8 @@ class Index extends Component
 
     public function confirmForceDelete(int $id): void
     {
+        abort_unless(PanelAccess::can(Auth::user(), 'mata kuliah', 'delete'), 403, 'Anda tidak memiliki hak untuk menghapus permanen mata kuliah.');
+
         $this->confirmingForceDeleteId = $id;
     }
 
@@ -171,6 +183,8 @@ class Index extends Component
      */
     public function forceDeleteMatkul(): void
     {
+        abort_unless(PanelAccess::can(Auth::user(), 'mata kuliah', 'delete'), 403, 'Anda tidak memiliki hak untuk menghapus permanen mata kuliah.');
+
         if (! $this->confirmingForceDeleteId) {
             return;
         }
