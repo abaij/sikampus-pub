@@ -38,6 +38,11 @@ class Import extends Component
      * Sama persis dengan JadwalController::import — hasil ditaruh di $result, bukan JsonResponse.
      * Kolom (A-L): kode semester, kode matkul, nama kelas mahasiswa, pertemuan ke-, tgl kuliah,
      * nama jenis kuliah, aktif, hari, jam mulai, jam selesai, nama ruangan, kode/NIDN dosen.
+     *
+     * Kode Semester Kelas dan Kode Mata Kuliah tetap wajib (dipakai mencari baris kelas), tapi
+     * Pertemuan ke-, Tgl Kuliah, Jenis Kuliah, Hari, Jam, Ruangan, dan Dosen semuanya opsional:
+     * kalau kosong (atau Pertemuan ke- di luar 1-99), kolomnya disimpan null, barisnya TETAP
+     * diimport — tidak pernah di-skip hanya karena kosong.
      */
     public function import(): void
     {
@@ -87,6 +92,7 @@ class Import extends Component
                 $kodeMatkul = trim((string) ($row[1] ?? ''));
                 $namaKelompokKelas = trim((string) ($row[2] ?? ''));
                 $urutanRaw = trim((string) ($row[3] ?? ''));
+                $tglKuliah = trim((string) ($row[4] ?? ''));
                 $namaJenisKuliah = trim((string) ($row[5] ?? ''));
                 $aktifRaw = trim(strtolower((string) ($row[6] ?? '')));
                 $hari = trim(strtolower((string) ($row[7] ?? '')));
@@ -105,12 +111,11 @@ class Import extends Component
 
                     continue;
                 }
-                if ($urutanRaw === '' || ! ctype_digit($urutanRaw) || (int) $urutanRaw < 1 || (int) $urutanRaw > 99) {
-                    $errors[] = "Baris {$rowNumber}: Pertemuan ke- wajib (angka 1-99).";
-
-                    continue;
-                }
-                $urutan = (int) $urutanRaw;
+                // Opsional: kosong atau di luar 1-99 disimpan null, bukan alasan untuk melewati
+                // baris — lihat catatan duplikat-slot di bawah untuk konsekuensinya.
+                $urutan = ($urutanRaw !== '' && ctype_digit($urutanRaw) && (int) $urutanRaw >= 1 && (int) $urutanRaw <= 99)
+                    ? (int) $urutanRaw
+                    : null;
 
                 $semester = Semester::where('kode', $kodeSemester)->first();
                 if (! $semester) {
@@ -224,22 +229,29 @@ class Import extends Component
                     }
                 }
 
-                $slotQ = Jadwal::where('id_kelas', $kelas->id)->where('urutan_pertemuan', $urutan);
-                if ($ruanganId) {
-                    $slotQ->where('id_ruangan', $ruanganId);
-                } else {
-                    $slotQ->whereNull('id_ruangan');
-                }
-                if ($slotQ->exists()) {
-                    $skipCount++;
-                    $errors[] = "Baris {$rowNumber}: Slot pertemuan {$urutan} sudah ada (diabaikan).";
+                // Cek slot duplikat cuma masuk akal kalau urutan_pertemuan terisi — constraint
+                // unique DB (id_kelas, id_ruangan, urutan_pertemuan) sendiri menganggap NULL tidak
+                // pernah sama dengan NULL lain, jadi beberapa baris "pertemuan ke-" kosong untuk
+                // kelas yang sama memang boleh dan harus tetap dibuat, bukan dianggap duplikat.
+                if ($urutan !== null) {
+                    $slotQ = Jadwal::where('id_kelas', $kelas->id)->where('urutan_pertemuan', $urutan);
+                    if ($ruanganId) {
+                        $slotQ->where('id_ruangan', $ruanganId);
+                    } else {
+                        $slotQ->whereNull('id_ruangan');
+                    }
+                    if ($slotQ->exists()) {
+                        $skipCount++;
+                        $errors[] = "Baris {$rowNumber}: Slot pertemuan {$urutan} sudah ada (diabaikan).";
 
-                    continue;
+                        continue;
+                    }
                 }
 
                 $jadwal = Jadwal::create([
                     'id_kelas' => $kelas->id,
                     'id_jenis_kuliah' => $jenisKuliahId,
+                    'tanggal' => $tglKuliah !== '' ? $tglKuliah : null,
                     'hari' => $hari !== '' ? $hari : null,
                     'jam_mulai' => $jamMulai !== '' ? $jamMulai : null,
                     'jam_selesai' => $jamSelesai !== '' ? $jamSelesai : null,

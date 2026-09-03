@@ -37,10 +37,11 @@
         <h2 class="mb-2 text-sm font-semibold text-neutral-900">Cara import</h2>
         <ol class="list-inside list-decimal space-y-1 text-sm text-neutral-600">
             <li>Download template Excel lewat tombol "Download Template" di atas.</li>
-            <li>Isi data mengikuti kolom pada baris pertama: Kode Semester (kelas), Kode Mata Kuliah, Nama Kelas Mahasiswa (kosong = tanpa kelas mahasiswa), Pertemuan ke- (1-99), Tgl Kuliah, Nama Jenis Kuliah (opsional), Aktif (ya/tidak), Hari, Jam Mulai, Jam Selesai, Nama Ruangan (opsional), Kode/NIDN Dosen (beberapa dipisah koma).</li>
-            <li>Kode Semester, Kode Mata Kuliah (pada kurikulum), Nama Kelas Mahasiswa, Nama Jenis Kuliah, Nama Ruangan, dan Kode/NIDN Dosen dicocokkan ke data yang sudah ada di sistem.</li>
+            <li>Isi data mengikuti kolom pada baris pertama: Kode Semester (kelas), Kode Mata Kuliah, Nama Kelas Mahasiswa (kosong = tanpa kelas mahasiswa), Pertemuan ke- (1-99, opsional), Tgl Kuliah (opsional), Nama Jenis Kuliah (opsional), Aktif (ya/tidak), Hari, Jam Mulai, Jam Selesai, Nama Ruangan (opsional), Kode/NIDN Dosen (beberapa dipisah koma).</li>
+            <li>Hanya Kode Semester dan Kode Mata Kuliah yang wajib diisi (dipakai mencari baris kelas). Kolom lain — Pertemuan ke-, Tgl Kuliah, Jenis Kuliah, Hari, Jam, Ruangan, dan Dosen — kalau kosong akan disimpan kosong; barisnya tetap diimport, tidak pernah dilewati hanya karena kosong. Pertemuan ke- yang diisi tapi bukan angka 1-99 juga disimpan kosong, bukan alasan untuk melewati baris.</li>
+            <li>Kode Semester, Kode Mata Kuliah (pada kurikulum), Nama Kelas Mahasiswa, Nama Jenis Kuliah, Nama Ruangan, dan Kode/NIDN Dosen — kalau diisi — dicocokkan ke data yang sudah ada di sistem.</li>
             <li>Kombinasi kelas, mata kuliah, dan nama kelas mahasiswa harus merujuk ke tepat satu baris kelas — kalau ada lebih dari satu yang cocok, perjelas dulu di data master kelas.</li>
-            <li>Jadwal dengan kombinasi kelas, pertemuan ke-, dan ruangan yang sama persis akan dilewati (dianggap sudah ada).</li>
+            <li>Jadwal dengan kombinasi kelas, pertemuan ke-, dan ruangan yang sama persis akan dilewati (dianggap sudah ada) — pengecekan ini hanya berlaku kalau Pertemuan ke- diisi; baris dengan Pertemuan ke- kosong selalu dibuat sebagai jadwal baru.</li>
             <li>Upload file (.xlsx atau .xls, maks 10MB) lalu klik "Proses Import".</li>
         </ol>
     </div>

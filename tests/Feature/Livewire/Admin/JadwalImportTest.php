@@ -91,7 +91,85 @@ it('imports a jadwal row and reports the success count', function () {
     expect($jadwal->id_jenis_kuliah)->toBe($jenisKuliah->id);
     expect($jadwal->hari)->toBe('senin');
     expect((bool) $jadwal->is_active)->toBeTrue();
+    expect($jadwal->tanggal?->format('Y-m-d'))->toBe('2026-01-01');
     expect(JadwalDosen::where('id_jadwal', $jadwal->id)->where('id_dosen', $dosen->id)->exists())->toBeTrue();
+});
+
+it('imports a row with an empty pertemuan ke- as null instead of skipping it', function () {
+    $admin = adminUser();
+    $semester = Semester::factory()->create(['kode' => '20246']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['kode_matkul' => 'MK700']);
+    $kelas = Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_semester' => $semester->id,
+        'id_kelompok_kelas' => null,
+    ]);
+
+    $file = makeJadwalImportFile([
+        [$semester->kode, 'MK700', '', '', '', '', '', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1)
+        ->assertSet('result.skip_count', 0);
+
+    $jadwal = Jadwal::where('id_kelas', $kelas->id)->firstOrFail();
+    expect($jadwal->urutan_pertemuan)->toBeNull();
+    expect($jadwal->tanggal)->toBeNull();
+    expect($jadwal->hari)->toBeNull();
+});
+
+it('imports a row with an out-of-range pertemuan ke- as null instead of skipping it', function () {
+    $admin = adminUser();
+    $semester = Semester::factory()->create(['kode' => '20247']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['kode_matkul' => 'MK701']);
+    $kelas = Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_semester' => $semester->id,
+        'id_kelompok_kelas' => null,
+    ]);
+
+    $file = makeJadwalImportFile([
+        [$semester->kode, 'MK701', '', '100', '', '', '', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 1)
+        ->assertSet('result.skip_count', 0);
+
+    $jadwal = Jadwal::where('id_kelas', $kelas->id)->firstOrFail();
+    expect($jadwal->urutan_pertemuan)->toBeNull();
+});
+
+it('imports multiple rows with an empty pertemuan ke- for the same kelas without treating them as duplicates', function () {
+    $admin = adminUser();
+    $semester = Semester::factory()->create(['kode' => '20248']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['kode_matkul' => 'MK702']);
+    $kelas = Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_semester' => $semester->id,
+        'id_kelompok_kelas' => null,
+    ]);
+
+    $file = makeJadwalImportFile([
+        [$semester->kode, 'MK702', '', '', '2026-02-01', '', '', '', '', '', '', ''],
+        [$semester->kode, 'MK702', '', '', '2026-02-08', '', '', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result.success_count', 2)
+        ->assertSet('result.skip_count', 0);
+
+    expect(Jadwal::where('id_kelas', $kelas->id)->count())->toBe(2);
 });
 
 it('resolves the kelas via nama kelompok kelas when provided', function () {

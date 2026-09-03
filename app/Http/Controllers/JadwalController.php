@@ -3,14 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Dosen;
-use App\Models\Kehadiran;
 use App\Models\Jadwal;
-use App\Models\Krs;
 use App\Models\JadwalDosen;
 use App\Models\JenisKuliah;
+use App\Models\Kehadiran;
 use App\Models\Kelas;
 use App\Models\KelasDosen;
 use App\Models\KelompokKelas;
+use App\Models\Krs;
 use App\Models\KurikulumMatkul;
 use App\Models\Matkul;
 use App\Models\Perkuliahan;
@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -1063,10 +1065,10 @@ class JadwalController extends Controller
         $headerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
-                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['rgb' => '4472C4'],
             ],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ];
         $sheet->getStyle('A1:K1')->applyFromArray($headerStyle);
 
@@ -1126,8 +1128,8 @@ class JadwalController extends Controller
             'Kode Semester (kelas)',
             'Kode Mata Kuliah',
             'Nama Kelas Mahasiswa (kosong jika tanpa kelas mahasiswa)',
-            'Pertemuan ke- (1-99)',
-            'Tgl Kuliah (YYYY-MM-DD)',
+            'Pertemuan ke- (1-99, opsional)',
+            'Tgl Kuliah (YYYY-MM-DD, opsional)',
             'Nama Jenis Kuliah (opsional)',
             'Aktif (ya/tidak)',
             'Hari',
@@ -1152,10 +1154,10 @@ class JadwalController extends Controller
         $headerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => [
-                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'fillType' => Fill::FILL_SOLID,
                 'startColor' => ['rgb' => '4472C4'],
             ],
-            'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ];
         $sheet->getStyle('A1:K1')->applyFromArray($headerStyle);
 
@@ -1249,12 +1251,11 @@ class JadwalController extends Controller
 
                     continue;
                 }
-                if ($urutanRaw === '' || ! ctype_digit($urutanRaw) || (int) $urutanRaw < 1 || (int) $urutanRaw > 99) {
-                    $errors[] = "Baris {$rowNumber}: Pertemuan ke- wajib (angka 1-99).";
-
-                    continue;
-                }
-                $urutan = (int) $urutanRaw;
+                // Opsional: kosong atau di luar 1-99 disimpan null, bukan alasan untuk melewati
+                // baris — lihat catatan duplikat-slot di bawah untuk konsekuensinya.
+                $urutan = ($urutanRaw !== '' && ctype_digit($urutanRaw) && (int) $urutanRaw >= 1 && (int) $urutanRaw <= 99)
+                    ? (int) $urutanRaw
+                    : null;
 
                 $semester = Semester::where('kode', $kodeSemester)->first();
                 if (! $semester) {
@@ -1363,22 +1364,29 @@ class JadwalController extends Controller
                     }
                 }
 
-                $slotQ = Jadwal::where('id_kelas', $kelas->id)->where('urutan_pertemuan', $urutan);
-                if ($ruanganId) {
-                    $slotQ->where('id_ruangan', $ruanganId);
-                } else {
-                    $slotQ->whereNull('id_ruangan');
-                }
-                if ($slotQ->exists()) {
-                    $skipCount++;
-                    $errors[] = "Baris {$rowNumber}: Slot pertemuan {$urutan} sudah ada (diabaikan).";
+                // Cek slot duplikat cuma masuk akal kalau urutan_pertemuan terisi — constraint
+                // unique DB (id_kelas, id_ruangan, urutan_pertemuan) sendiri menganggap NULL tidak
+                // pernah sama dengan NULL lain, jadi beberapa baris "pertemuan ke-" kosong untuk
+                // kelas yang sama memang boleh dan harus tetap dibuat, bukan dianggap duplikat.
+                if ($urutan !== null) {
+                    $slotQ = Jadwal::where('id_kelas', $kelas->id)->where('urutan_pertemuan', $urutan);
+                    if ($ruanganId) {
+                        $slotQ->where('id_ruangan', $ruanganId);
+                    } else {
+                        $slotQ->whereNull('id_ruangan');
+                    }
+                    if ($slotQ->exists()) {
+                        $skipCount++;
+                        $errors[] = "Baris {$rowNumber}: Slot pertemuan {$urutan} sudah ada (diabaikan).";
 
-                    continue;
+                        continue;
+                    }
                 }
 
                 $jadwal = Jadwal::create([
                     'id_kelas' => $kelas->id,
                     'id_jenis_kuliah' => $jenisKuliahId,
+                    'tanggal' => $tglKuliah !== '' ? $tglKuliah : null,
                     'hari' => $hari !== '' ? $hari : null,
                     'jam_mulai' => $jamMulai !== '' ? $jamMulai : null,
                     'jam_selesai' => $jamSelesai !== '' ? $jamSelesai : null,
