@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\DosenController;
 use App\Http\Controllers\DosenWaliController;
+use App\Http\Controllers\JadwalController;
 use App\Http\Controllers\KecamatanController;
 use App\Http\Controllers\KelasController;
 use App\Http\Controllers\KelompokKelasController;
@@ -40,6 +41,7 @@ use App\Livewire\Admin\DosenWali\Show as DosenWaliShow;
 use App\Livewire\Admin\Fakultas\Form as FakultasForm;
 use App\Livewire\Admin\Fakultas\Index as FakultasIndex;
 use App\Livewire\Admin\Jadwal\Form as JadwalForm;
+use App\Livewire\Admin\Jadwal\Import as JadwalImport;
 use App\Livewire\Admin\Jadwal\Index as JadwalIndex;
 use App\Livewire\Admin\Jadwal\Show as JadwalShow;
 use App\Livewire\Admin\JadwalUjian\Form as JadwalUjianForm;
@@ -455,8 +457,12 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::livewire('akademik/kelas/{id}/edit', KelasForm::class)->name('akademik.kelas.edit');
         Route::livewire('akademik/kelas/{id}', KelasShow::class)->name('akademik.kelas.show');
 
+        // Rute literal (create/template/import) harus didaftarkan sebelum 'akademik/jadwal/{id}'
+        // supaya tidak tertangkap sebagai id (lihat catatan di skill siak-livewire-module).
         Route::livewire('akademik/jadwal', JadwalIndex::class)->name('akademik.jadwal');
         Route::livewire('akademik/jadwal/create', JadwalForm::class)->name('akademik.jadwal.create');
+        Route::get('akademik/jadwal/template/download', [JadwalController::class, 'downloadTemplate'])->name('akademik.jadwal.template');
+        Route::livewire('akademik/jadwal/import', JadwalImport::class)->name('akademik.jadwal.import');
         Route::livewire('akademik/jadwal/{id}/edit', JadwalForm::class)->name('akademik.jadwal.edit');
         Route::livewire('akademik/jadwal/{id}', JadwalShow::class)->name('akademik.jadwal.show');
 
