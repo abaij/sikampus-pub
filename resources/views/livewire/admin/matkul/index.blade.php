@@ -175,6 +175,14 @@
                                         >
                                             <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
                                         </button>
+                                        <button
+                                            type="button"
+                                            wire:click="confirmForceDelete({{ $matkul->id }})"
+                                            class="inline-flex items-center justify-center rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 hover:text-rose-800"
+                                            title="Hapus Permanen"
+                                        >
+                                            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
                                     @else
                                         <a
                                             href="{{ route('admin.akademik.matkul.show', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
@@ -227,6 +235,23 @@
                     </button>
                     <button type="button" wire:click="delete" class="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
                         Hapus
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if ($confirmingForceDeleteId)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 px-4">
+            <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-border-lg">
+                <h3 class="text-base font-semibold text-neutral-900">Hapus permanen mata kuliah?</h3>
+                <p class="mt-2 text-sm text-neutral-600">Data akan benar-benar dihapus dari database dan tidak bisa dipulihkan lagi — berbeda dari hapus biasa. Tindakan ini tidak dapat dibatalkan.</p>
+                <div class="mt-6 flex justify-end gap-2">
+                    <button type="button" wire:click="cancelForceDelete" class="rounded-lg px-4 py-2 text-sm font-medium text-neutral-700 transition hover:bg-neutral-50 shadow-border">
+                        Batal
+                    </button>
+                    <button type="button" wire:click="forceDeleteMatkul" class="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700">
+                        Hapus Permanen
                     </button>
                 </div>
             </div>

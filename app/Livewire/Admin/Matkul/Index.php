@@ -6,6 +6,7 @@ use App\Models\JenisMatkul;
 use App\Models\Matkul;
 use App\Models\Prodi;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
@@ -43,6 +44,8 @@ class Index extends Component
     public int $perPage = 10;
 
     public ?int $confirmingDeleteId = null;
+
+    public ?int $confirmingForceDeleteId = null;
 
     public function updatingSearch(): void
     {
@@ -144,6 +147,66 @@ class Index extends Component
         $matkul->restore();
 
         session()->flash('status', 'Mata kuliah berhasil dipulihkan.');
+        $this->resetPage();
+    }
+
+    public function confirmForceDelete(int $id): void
+    {
+        $this->confirmingForceDeleteId = $id;
+    }
+
+    public function cancelForceDelete(): void
+    {
+        $this->confirmingForceDeleteId = null;
+    }
+
+    /**
+     * Tidak ada padanan di MatkulController — API belum punya endpoint hapus permanen, murni fitur
+     * panel. kurikulum_matkul, matkul_setup, dan prodi_matkul_ta constrained('matkul')
+     * ->restrictOnDelete() di migration; restrict itu berlaku di baris DB apa adanya, termasuk baris
+     * yang sudah soft-deleted di tabel-tabel itu sendiri — jadi dicek lewat DB::table mentah (bukan
+     * Eloquent, yang diam-diam menyembunyikan baris trashed dan bikin pengecekan ini meleset) supaya
+     * user dapat pesan yang jelas, bukan QueryException 500 mentah kalau tetap dipaksa forceDelete().
+     * matkul_prasyarat sengaja tidak dicek karena cascadeOnDelete() di migration-nya sendiri.
+     */
+    public function forceDeleteMatkul(): void
+    {
+        if (! $this->confirmingForceDeleteId) {
+            return;
+        }
+
+        $matkul = Matkul::onlyTrashed()->findOrFail($this->confirmingForceDeleteId);
+
+        $user = Auth::user();
+        if ($user && $user->hasScopeRestriction()) {
+            $allowedProdiIds = $user->getAllowedProdiIds();
+            if ($allowedProdiIds !== null && ! in_array((int) $matkul->id_prodi, $allowedProdiIds, true)) {
+                abort(403, 'Anda tidak memiliki akses ke mata kuliah ini.');
+            }
+        }
+
+        $blockers = [];
+        if (DB::table('kurikulum_matkul')->where('id_matkul', $matkul->id)->exists()) {
+            $blockers[] = 'kurikulum';
+        }
+        if (DB::table('matkul_setup')->where('id_matkul', $matkul->id)->exists()) {
+            $blockers[] = 'setup tugas akhir';
+        }
+        if (DB::table('prodi_matkul_ta')->where('id_matkul', $matkul->id)->exists()) {
+            $blockers[] = 'daftar mata kuliah tugas akhir prodi';
+        }
+
+        if ($blockers !== []) {
+            session()->flash('error', "Tidak bisa menghapus permanen \"{$matkul->kode}\": masih tercatat di data ".implode(', ', $blockers).'. Hapus atau pindahkan data itu terlebih dahulu.');
+            $this->confirmingForceDeleteId = null;
+
+            return;
+        }
+
+        $matkul->forceDelete();
+
+        $this->confirmingForceDeleteId = null;
+        session()->flash('status', 'Mata kuliah berhasil dihapus permanen.');
         $this->resetPage();
     }
 

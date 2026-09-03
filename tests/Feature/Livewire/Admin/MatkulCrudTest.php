@@ -3,9 +3,11 @@
 use App\Livewire\Admin\Matkul\Form;
 use App\Livewire\Admin\Matkul\Index;
 use App\Livewire\Admin\Matkul\Show;
+use App\Models\KurikulumMatkul;
 use App\Models\Matkul;
 use App\Models\MatkulPrasyarat;
 use App\Models\Prodi;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 it('renders index and create form as full pages', function () {
@@ -118,6 +120,63 @@ it('admin dengan scope prodi tidak bisa memulihkan matkul di luar scope-nya', fu
         ->test(Index::class)
         ->set('showTrashed', true)
         ->call('restore', $matkulB->id)
+        ->assertStatus(403);
+
+    expect(Matkul::withTrashed()->find($matkulB->id)->trashed())->toBeTrue();
+});
+
+it('permanently deletes a soft-deleted matkul that has no related records', function () {
+    $admin = adminUser();
+    $matkul = Matkul::factory()->create(['kode' => 'MK300']);
+    $matkul->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $matkul->id)
+        ->call('forceDeleteMatkul');
+
+    expect(Matkul::withTrashed()->find($matkul->id))->toBeNull();
+});
+
+// kurikulum_matkul, matkul_setup, dan prodi_matkul_ta constrained('matkul')->restrictOnDelete() di
+// migration-nya — restrict itu berlaku di level baris DB tanpa peduli baris itu sendiri sudah
+// soft-deleted atau belum, jadi forceDeleteMatkul() wajib menolak lebih dulu dengan pesan yang
+// jelas alih-alih membiarkan MySQL melempar QueryException 500 mentah.
+it('refuses to permanently delete a matkul still referenced by kurikulum, setup ta, or prodi ta', function () {
+    $admin = adminUser();
+    $matkul = Matkul::factory()->create(['kode' => 'MK301']);
+    $matkul->delete();
+
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['id_matkul' => $matkul->id]);
+    $kurikulumMatkul->delete();
+    DB::table('matkul_setup')->insert(['id_matkul' => $matkul->id, 'nama' => 'SKRIPSI', 'created_at' => now(), 'updated_at' => now()]);
+    $prodi = Prodi::factory()->create();
+    DB::table('prodi_matkul_ta')->insert(['id_prodi' => $prodi->id, 'id_matkul' => $matkul->id, 'has_ujian' => true, 'created_at' => now(), 'updated_at' => now()]);
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $matkul->id)
+        ->call('forceDeleteMatkul');
+
+    expect(Matkul::withTrashed()->find($matkul->id)->trashed())->toBeTrue();
+});
+
+it('admin dengan scope prodi tidak bisa menghapus permanen matkul di luar scope-nya', function () {
+    $prodiA = Prodi::factory()->create();
+    $prodiB = Prodi::factory()->create();
+    $matkulB = Matkul::factory()->create(['id_prodi' => $prodiB->id]);
+    $matkulB->delete();
+
+    $admin = adminUser('admin_akademik');
+    scopeAdminToProdi($admin, $prodiA->id);
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $matkulB->id)
+        ->call('forceDeleteMatkul')
         ->assertStatus(403);
 
     expect(Matkul::withTrashed()->find($matkulB->id)->trashed())->toBeTrue();
