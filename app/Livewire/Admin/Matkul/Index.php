@@ -33,6 +33,13 @@ class Index extends Component
     #[Url(as: 'status')]
     public string $filterStatus = '';
 
+    // Baris yang sudah soft-deleted disembunyikan secara default (mengikuti perilaku default
+    // Eloquent) — dinyalakan lewat toggle supaya admin bisa menemukan lalu memulihkan mata kuliah
+    // yang kodenya "terkunci" oleh baris terhapus (unique index kode+id_prodi tidak mengecualikan
+    // baris soft-deleted, jadi menambah baru dengan kode yang sama akan selalu gagal).
+    #[Url(as: 'trashed')]
+    public bool $showTrashed = false;
+
     public int $perPage = 10;
 
     public ?int $confirmingDeleteId = null;
@@ -58,6 +65,11 @@ class Index extends Component
     }
 
     public function updatingFilterStatus(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingShowTrashed(): void
     {
         $this->resetPage();
     }
@@ -98,11 +110,54 @@ class Index extends Component
     }
 
     /**
-     * Sama persis dengan MatkulController::index.
+     * Tidak ada padanan di MatkulController — API belum punya endpoint restore untuk mata kuliah.
+     * Murni fitur panel: unique index kode+id_prodi tidak mengecualikan baris soft-deleted, jadi
+     * satu-satunya cara menambah kembali mata kuliah dengan kode yang sama adalah memulihkan baris
+     * lama, bukan membuat baris baru (yang akan selalu gagal kena unique constraint).
+     */
+    public function restore(int $id): void
+    {
+        $matkul = Matkul::onlyTrashed()->findOrFail($id);
+
+        $user = Auth::user();
+        if ($user && $user->hasScopeRestriction()) {
+            $allowedProdiIds = $user->getAllowedProdiIds();
+            if ($allowedProdiIds !== null && ! in_array((int) $matkul->id_prodi, $allowedProdiIds, true)) {
+                abort(403, 'Anda tidak memiliki akses ke mata kuliah ini.');
+            }
+        }
+
+        // Bisa saja sudah ada mata kuliah aktif lain dengan kode+prodi yang sama (dibuat setelah
+        // baris ini dihapus) — pulihkan begitu saja akan menabrak unique constraint dan melempar
+        // QueryException mentah, jadi dicek dulu supaya errornya ramah.
+        $conflict = Matkul::where('kode', $matkul->kode)
+            ->where('id_prodi', $matkul->id_prodi)
+            ->whereNull('deleted_at')
+            ->exists();
+
+        if ($conflict) {
+            session()->flash('error', "Tidak bisa memulihkan \"{$matkul->kode}\": sudah ada mata kuliah aktif dengan kode yang sama di prodi ini.");
+
+            return;
+        }
+
+        $matkul->restore();
+
+        session()->flash('status', 'Mata kuliah berhasil dipulihkan.');
+        $this->resetPage();
+    }
+
+    /**
+     * Sama persis dengan MatkulController::index, plus withTrashed() opsional lewat $showTrashed
+     * (tidak ada padanan di API — lihat catatan pada restore()).
      */
     public function render()
     {
         $query = Matkul::with(['prodi.jenjang', 'jenisMatkul'])->withCount('matkulPrasyaratLinks');
+
+        if ($this->showTrashed) {
+            $query->withTrashed();
+        }
 
         $user = Auth::user();
         $allowedProdiIds = null;

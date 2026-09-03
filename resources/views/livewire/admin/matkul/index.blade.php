@@ -45,6 +45,12 @@
             <span>{{ session('status') }}</span>
         </div>
     @endif
+    @if (session('error'))
+        <div class="mb-4 flex gap-3 rounded-lg border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <i data-lucide="alert-circle" class="h-5 w-5 shrink-0 text-rose-600" aria-hidden="true"></i>
+            <span>{{ session('error') }}</span>
+        </div>
+    @endif
 
     <div class="rounded-2xl bg-white shadow-border">
         <div class="space-y-4 border-b border-neutral-200 p-4">
@@ -98,6 +104,15 @@
                     />
                 </div>
             </div>
+
+            <label class="inline-flex items-center gap-2 text-sm text-neutral-700">
+                <input
+                    type="checkbox"
+                    wire:model.live="showTrashed"
+                    class="size-4 rounded border-neutral-300 text-neutral-900 focus:ring-neutral-900/10"
+                />
+                Tampilkan mata kuliah yang sudah dihapus
+            </label>
         </div>
 
         <div class="overflow-x-auto">
@@ -117,7 +132,7 @@
                 </thead>
                 <tbody class="divide-y divide-neutral-100">
                     @forelse ($matkulList as $matkul)
-                        <tr wire:key="matkul-{{ $matkul->id }}">
+                        <tr wire:key="matkul-{{ $matkul->id }}" class="{{ $matkul->trashed() ? 'bg-neutral-50 text-neutral-500' : '' }}">
                             <td class="px-4 py-3 font-mono font-medium text-neutral-900">{{ $matkul->kode }}</td>
                             <td class="px-4 py-3">
                                 <div class="font-medium text-neutral-900">{{ $matkul->nama }}</div>
@@ -139,34 +154,51 @@
                                 </span>
                             </td>
                             <td class="px-4 py-3">
-                                <span class="inline-flex rounded-full px-2 py-1 text-xs font-semibold {{ $matkul->status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-neutral-100 text-neutral-700' }}">
-                                    {{ $matkul->status === 'active' ? 'Aktif' : 'Tidak Aktif' }}
-                                </span>
+                                @if ($matkul->trashed())
+                                    <span class="inline-flex rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+                                        Dihapus
+                                    </span>
+                                @else
+                                    <span class="inline-flex rounded-full px-2 py-1 text-xs font-semibold {{ $matkul->status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-neutral-100 text-neutral-700' }}">
+                                        {{ $matkul->status === 'active' ? 'Aktif' : 'Tidak Aktif' }}
+                                    </span>
+                                @endif
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <div class="inline-flex items-center gap-1">
-                                    <a
-                                        href="{{ route('admin.akademik.matkul.show', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
-                                        class="inline-flex items-center justify-center rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
-                                        title="Lihat"
-                                    >
-                                        <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
-                                    </a>
-                                    <a
-                                        href="{{ route('admin.akademik.matkul.edit', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
-                                        class="inline-flex items-center justify-center rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
-                                        title="Ubah"
-                                    >
-                                        <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
-                                    </a>
-                                    <button
-                                        type="button"
-                                        wire:click="confirmDelete({{ $matkul->id }})"
-                                        class="inline-flex items-center justify-center rounded-lg p-2 text-rose-500 transition hover:bg-rose-50 hover:text-rose-700"
-                                        title="Hapus"
-                                    >
-                                        <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
-                                    </button>
+                                    @if ($matkul->trashed())
+                                        <button
+                                            type="button"
+                                            wire:click="restore({{ $matkul->id }})"
+                                            class="inline-flex items-center justify-center rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50 hover:text-emerald-700"
+                                            title="Pulihkan"
+                                        >
+                                            <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
+                                    @else
+                                        <a
+                                            href="{{ route('admin.akademik.matkul.show', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
+                                            class="inline-flex items-center justify-center rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
+                                            title="Lihat"
+                                        >
+                                            <i data-lucide="eye" class="h-4 w-4" aria-hidden="true"></i>
+                                        </a>
+                                        <a
+                                            href="{{ route('admin.akademik.matkul.edit', $matkul->id) }}{{ $returnQuery ? '?' . $returnQuery : '' }}"
+                                            class="inline-flex items-center justify-center rounded-lg p-2 text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
+                                            title="Ubah"
+                                        >
+                                            <i data-lucide="pencil" class="h-4 w-4" aria-hidden="true"></i>
+                                        </a>
+                                        <button
+                                            type="button"
+                                            wire:click="confirmDelete({{ $matkul->id }})"
+                                            class="inline-flex items-center justify-center rounded-lg p-2 text-rose-500 transition hover:bg-rose-50 hover:text-rose-700"
+                                            title="Hapus"
+                                        >
+                                            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+                                        </button>
+                                    @endif
                                 </div>
                             </td>
                         </tr>

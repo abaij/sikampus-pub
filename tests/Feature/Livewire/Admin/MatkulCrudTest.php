@@ -52,6 +52,98 @@ it('creates, updates, and deletes a matkul', function () {
     expect(Matkul::find($matkul->id))->toBeNull();
 });
 
+it('hides soft-deleted matkul by default and shows them with a restore action when toggled on', function () {
+    $admin = adminUser();
+    $prodi = Prodi::factory()->create();
+    $matkul = Matkul::factory()->create(['kode' => 'MK200', 'nama' => 'Matkul Terhapus', 'id_prodi' => $prodi->id]);
+    $matkul->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->assertDontSee('Matkul Terhapus');
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->assertSee('Matkul Terhapus')
+        ->assertSee('Dihapus');
+});
+
+it('restores a soft-deleted matkul instead of trying to recreate it', function () {
+    $admin = adminUser();
+    $prodi = Prodi::factory()->create();
+    $matkul = Matkul::factory()->create(['kode' => 'MK201', 'id_prodi' => $prodi->id]);
+    $matkul->delete();
+    expect(Matkul::find($matkul->id))->toBeNull();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $matkul->id);
+
+    expect(Matkul::find($matkul->id))->not->toBeNull();
+    expect(Matkul::find($matkul->id)->deleted_at)->toBeNull();
+});
+
+it('refuses to restore a matkul whose kode+prodi is already taken by an active matkul', function () {
+    // Kombinasi kode+id_prodi lain (yang benar-benar prodi) tidak bisa dipakai untuk skenario ini
+    // sekaligus: unique index DB-nya sendiri tidak mengecualikan baris soft-deleted, jadi baris
+    // aktif kedua dengan kode+prodi yang sama pun tidak akan pernah bisa dibuat (ikut membuktikan
+    // laporan awal soal kode "terkunci" oleh baris terhapus). Satu-satunya kombinasi yang MySQL
+    // benar-benar biarkan duplikat adalah id_prodi NULL (NULL dianggap berbeda dari NULL lain di
+    // unique index InnoDB) — jadi kasus konflik nyata cuma bisa terjadi di situ.
+    $admin = adminUser();
+    $trashed = Matkul::factory()->create(['kode' => 'MK202', 'id_prodi' => null]);
+    $trashed->delete();
+    Matkul::factory()->create(['kode' => 'MK202', 'id_prodi' => null]);
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $trashed->id);
+
+    expect(Matkul::withTrashed()->find($trashed->id)->trashed())->toBeTrue();
+});
+
+it('admin dengan scope prodi tidak bisa memulihkan matkul di luar scope-nya', function () {
+    $prodiA = Prodi::factory()->create();
+    $prodiB = Prodi::factory()->create();
+    $matkulB = Matkul::factory()->create(['id_prodi' => $prodiB->id]);
+    $matkulB->delete();
+
+    $admin = adminUser('admin_akademik');
+    scopeAdminToProdi($admin, $prodiA->id);
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $matkulB->id)
+        ->assertStatus(403);
+
+    expect(Matkul::withTrashed()->find($matkulB->id)->trashed())->toBeTrue();
+});
+
+// Regression yang jadi alasan tombol Pulihkan ada: unique index kode+id_prodi di DB (dan
+// Rule::unique di MatkulController/Form yang meniru) tidak mengecualikan baris soft-deleted, jadi
+// mengisi ulang form Tambah dengan kode yang sama selalu gagal — satu-satunya jalan adalah
+// memulihkan baris lama lewat tabel index, bukan membuat baris baru.
+it('still rejects creating a new matkul whose kode+prodi belongs to a soft-deleted one', function () {
+    $admin = adminUser();
+    $prodi = Prodi::factory()->create();
+    $trashed = Matkul::factory()->create(['kode' => 'MK203', 'id_prodi' => $prodi->id]);
+    $trashed->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Form::class)
+        ->set('kode', 'MK203')
+        ->set('nama', 'Mata Kuliah Baru')
+        ->set('id_prodi', $prodi->id)
+        ->call('save')
+        ->assertHasErrors('kode');
+
+    expect(Matkul::where('kode', 'MK203')->where('id_prodi', $prodi->id)->count())->toBe(0);
+});
+
 it('allows the same kode across different prodi but not within the same prodi', function () {
     $admin = adminUser();
     $prodiA = Prodi::factory()->create();
