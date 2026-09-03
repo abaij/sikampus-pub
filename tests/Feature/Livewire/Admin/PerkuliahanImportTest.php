@@ -1,6 +1,8 @@
 <?php
 
+use App\Jobs\ImportPerkuliahanJob;
 use App\Livewire\Admin\Perkuliahan\Import;
+use App\Models\ImportBatch;
 use App\Models\Jadwal;
 use App\Models\Kelas;
 use App\Models\KurikulumMatkul;
@@ -9,6 +11,7 @@ use App\Models\Perkuliahan;
 use App\Models\Prodi;
 use App\Models\Semester;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -16,7 +19,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
  * Susun file xlsx sungguhan (bukan UploadedFile::fake() biasa — isinya harus bisa diparse
- * PhpSpreadsheet) dengan urutan kolom persis PerkuliahanController::importSpreadsheet.
+ * PhpSpreadsheet) dengan urutan kolom persis PerkuliahanImportService::run.
  */
 function makePerkuliahanImportFile(array $rows): UploadedFile
 {
@@ -30,6 +33,12 @@ function makePerkuliahanImportFile(array $rows): UploadedFile
 
     return UploadedFile::fake()->createWithContent('import.xlsx', file_get_contents($path));
 }
+
+beforeEach(function () {
+    // Isolasi file yang disimpan komponen (disk 'local', bukan file asli di storage/app/private)
+    // dari sesi tes lain — lihat catatan App\Livewire\Admin\Perkuliahan\Import::import().
+    Storage::fake('local');
+});
 
 it('renders the import page with a link to download the template', function () {
     $admin = adminUser();
@@ -60,7 +69,31 @@ it('downloads a template with an xlsx content type', function () {
         ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 });
 
-it('attaches a realisasi perkuliahan to an existing jadwal found via id_jadwal', function () {
+it('dispatches ImportPerkuliahanJob and creates a pending import batch instead of processing synchronously', function () {
+    Bus::fake();
+
+    $admin = adminUser();
+    $jadwal = Jadwal::factory()->create();
+
+    $file = makePerkuliahanImportFile([
+        [$jadwal->id, '', '', '', '', '', '2026-01-15 08:00', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->assertSet('result', null)
+        ->assertSet('status', 'pending');
+
+    Bus::assertDispatched(ImportPerkuliahanJob::class);
+
+    // Karena Bus di-fake, job tidak benar-benar jalan — batch harus tetap "pending" di DB.
+    expect(ImportBatch::where('type', 'perkuliahan')->where('status', 'pending')->exists())->toBeTrue();
+    expect(Perkuliahan::where('id_jadwal', $jadwal->id)->exists())->toBeFalse();
+});
+
+it('completes the batch and reflects the result after one poll tick (queue runs sync in tests)', function () {
     $admin = adminUser();
     $jadwal = Jadwal::factory()->create();
 
@@ -68,17 +101,44 @@ it('attaches a realisasi perkuliahan to an existing jadwal found via id_jadwal',
         [$jadwal->id, '', '', '', '', '', '2026-01-15 08:00', '2026-01-15 10:00', 'Pengenalan kuliah', 'Materi sesuai RPS', '', ''],
     ]);
 
-    Livewire::actingAs($admin)
+    $component = Livewire::actingAs($admin)
         ->test(Import::class)
         ->set('file', $file)
-        ->call('import')
+        ->call('import');
+
+    // QUEUE_CONNECTION=sync di lingkungan tes: job sudah selesai begitu import() kembali, tapi
+    // properti komponen baru ter-update lewat poll() — sama seperti alur nyata (browser mem-poll
+    // beberapa kali sampai job yang jalan di worker antrian selesai).
+    $batch = ImportBatch::where('type', 'perkuliahan')->latest('id')->first();
+    expect($batch->status)->toBe('completed');
+
+    $component->call('poll')
         ->assertSet('result.success_count', 1)
         ->assertSet('result.materi_perkuliahan_count', 0)
-        ->assertSet('result.skip_count', 0);
+        ->assertSet('result.skip_count', 0)
+        ->assertSet('batchId', null);
 
     $perkuliahan = Perkuliahan::where('id_jadwal', $jadwal->id)->firstOrFail();
     expect($perkuliahan->materi)->toBe('Pengenalan kuliah');
     expect($perkuliahan->realisasi_materi)->toBe('Materi sesuai RPS');
+});
+
+it('deletes the temporary uploaded file once the job finishes', function () {
+    $admin = adminUser();
+    $jadwal = Jadwal::factory()->create();
+
+    $file = makePerkuliahanImportFile([
+        [$jadwal->id, '', '', '', '', '', '2026-01-15 08:00', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import');
+
+    $batch = ImportBatch::where('type', 'perkuliahan')->latest('id')->first();
+    expect($batch->file_path)->not->toBeNull();
+    Storage::disk('local')->assertMissing($batch->file_path);
 });
 
 it('resolves the jadwal via natural keys (semester, kode matkul, pertemuan ke-) when id_jadwal is blank', function () {
@@ -96,10 +156,11 @@ it('resolves the jadwal via natural keys (semester, kode matkul, pertemuan ke-) 
         ['', $semester->kode, 'MK001', '', '1', '', '2026-01-15 08:00', '', '', '', '', ''],
     ]);
 
-    Livewire::actingAs($admin)
+    $component = Livewire::actingAs($admin)
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
+        ->call('poll')
         ->assertSet('result.success_count', 1);
 
     expect(Perkuliahan::where('id_jadwal', $jadwal->id)->exists())->toBeTrue();
@@ -121,6 +182,7 @@ it('skips a row whose realisasi already exists for the same jadwal and waktu mul
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
+        ->call('poll')
         ->assertSet('result.success_count', 0)
         ->assertSet('result.skip_count', 1);
 
@@ -142,6 +204,7 @@ it('attaches a materi file that already exists in public storage', function () {
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
+        ->call('poll')
         ->assertSet('result.success_count', 0)
         ->assertSet('result.materi_perkuliahan_count', 1);
 
@@ -164,6 +227,7 @@ it('records an error when the materi file path does not exist in storage', funct
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
+        ->call('poll')
         ->assertSet('result.materi_perkuliahan_count', 0)
         ->get('result');
 
@@ -183,6 +247,7 @@ it('records an error when neither waktu mulai nor path materi is filled', functi
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
+        ->call('poll')
         ->assertSet('result.success_count', 0)
         ->get('result');
 
@@ -200,10 +265,27 @@ it('records an error when id_jadwal does not exist', function () {
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
+        ->call('poll')
         ->assertSet('result.success_count', 0)
         ->get('result');
 
     expect($result['errors'])->not->toBeEmpty();
+});
+
+it('marks the batch failed and surfaces the error when the file cannot be parsed', function () {
+    $admin = adminUser();
+
+    $file = UploadedFile::fake()->createWithContent('import.xlsx', 'not a real xlsx file');
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->call('poll')
+        ->assertSet('result', null)
+        ->assertSet('jobError', fn ($value) => $value !== null && $value !== '');
+
+    expect(ImportBatch::where('type', 'perkuliahan')->where('status', 'failed')->exists())->toBeTrue();
 });
 
 it('scopes import by allowed prodi for a prodi-restricted admin', function () {
@@ -226,11 +308,28 @@ it('scopes import by allowed prodi for a prodi-restricted admin', function () {
         ->test(Import::class)
         ->set('file', $file)
         ->call('import')
+        ->call('poll')
         ->assertSet('result.success_count', 1)
         ->assertSet('result.skip_count', 1);
 
     expect(Perkuliahan::where('id_jadwal', $jadwalA->id)->exists())->toBeTrue();
     expect(Perkuliahan::where('id_jadwal', $jadwalB->id)->exists())->toBeFalse();
+});
+
+it('resumes tracking an in-progress batch for the same user after remounting (e.g. page refresh)', function () {
+    $admin = adminUser();
+
+    $batch = ImportBatch::create([
+        'type' => 'perkuliahan',
+        'id_user' => $admin->id,
+        'status' => 'processing',
+        'file_path' => 'imports/perkuliahan/does-not-matter.xlsx',
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->assertSet('batchId', $batch->id)
+        ->assertSet('status', 'processing');
 });
 
 it('redirects unauthenticated users to the login page', function () {
