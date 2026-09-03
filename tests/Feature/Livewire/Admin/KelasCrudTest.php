@@ -8,6 +8,7 @@ use App\Models\Jenjang;
 use App\Models\Kelas;
 use App\Models\KelasDosen;
 use App\Models\KelompokKelas;
+use App\Models\Krs;
 use App\Models\KurikulumMatkul;
 use App\Models\Matkul;
 use App\Models\Prodi;
@@ -88,6 +89,109 @@ it('rejects a duplicate kombinasi kurikulum matkul, semester, dan angkatan', fun
         ->assertHasErrors(['id_kurikulum_matkul']);
 });
 
+it('hides soft-deleted kelas by default and shows them with a restore/hapus-permanen action when toggled on', function () {
+    $admin = adminUser();
+    $matkul = Matkul::factory()->create(['nama' => 'Kelas Terhapus']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['id_matkul' => $matkul->id]);
+    $kelas = Kelas::factory()->create(['id_kurikulum_matkul' => $kurikulumMatkul->id]);
+    $kelas->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->assertDontSee('Kelas Terhapus');
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->assertSee('Kelas Terhapus')
+        ->assertSee('Dihapus');
+});
+
+it('restores a soft-deleted kelas instead of trying to recreate it', function () {
+    $admin = adminUser();
+    $kelas = Kelas::factory()->create();
+    $kelas->delete();
+    expect(Kelas::find($kelas->id))->toBeNull();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $kelas->id);
+
+    expect(Kelas::find($kelas->id))->not->toBeNull();
+    expect(Kelas::find($kelas->id)->deleted_at)->toBeNull();
+});
+
+// kelas_unique (id_kelompok_kelas + id_kurikulum_matkul + id_semester + id_angkatan) hanya punya
+// celah nyata saat id_kelompok_kelas NULL (MySQL tidak menegakkan uniqueness antar NULL di
+// composite index) — sama seperti kasus id_prodi NULL di modul Matkul. Untuk kombinasi dengan
+// id_kelompok_kelas terisi, dua baris aktif dengan kombinasi sama tidak akan pernah bisa dibuat
+// sejak awal (lihat test "rejects a duplicate kombinasi..." di atas).
+it('refuses to restore a kelas whose kombinasi is already taken by an active kelas', function () {
+    $admin = adminUser();
+    $kurikulumMatkul = KurikulumMatkul::factory()->create();
+    $semester = Semester::factory()->create();
+    $angkatan = Semester::factory()->create();
+
+    $trashed = Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_semester' => $semester->id,
+        'id_angkatan' => $angkatan->id,
+        'id_kelompok_kelas' => null,
+    ]);
+    $trashed->delete();
+
+    Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_semester' => $semester->id,
+        'id_angkatan' => $angkatan->id,
+        'id_kelompok_kelas' => null,
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $trashed->id);
+
+    expect(Kelas::withTrashed()->find($trashed->id)->trashed())->toBeTrue();
+});
+
+it('permanently deletes a soft-deleted kelas that has no related records', function () {
+    $admin = adminUser();
+    $kelas = Kelas::factory()->create();
+    $kelas->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $kelas->id)
+        ->call('forceDeleteKelas');
+
+    expect(Kelas::withTrashed()->find($kelas->id))->toBeNull();
+});
+
+// krs dan kelas_dosen constrained('kelas')->restrictOnDelete() — restrict itu tetap berlaku walau
+// baris perujuknya sendiri sudah soft-deleted, jadi harus ditolak lebih dulu dengan pesan jelas.
+it('refuses to permanently delete a kelas still referenced by krs or dosen pengampu', function () {
+    $admin = adminUser();
+    $kelas = Kelas::factory()->create();
+
+    $krs = Krs::factory()->create(['id_kelas' => $kelas->id]);
+    $krs->delete();
+
+    KelasDosen::create(['id_kelas' => $kelas->id, 'id_dosen' => Dosen::factory()->create()->id, 'is_pic' => true]);
+
+    $kelas->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $kelas->id)
+        ->call('forceDeleteKelas');
+
+    expect(Kelas::withTrashed()->find($kelas->id)->trashed())->toBeTrue();
+});
+
 it('shows all kelas mahasiswa filter options when no prodi is selected, and scopes them once one is', function () {
     $admin = adminUser();
     $prodiA = Prodi::factory()->create();
@@ -164,6 +268,33 @@ it('admin dengan scope prodi tidak bisa menghapus kelas di luar scope-nya', func
         ->assertStatus(403);
 
     expect(Kelas::find($kelasB->id))->not->toBeNull();
+});
+
+it('admin dengan scope prodi tidak bisa memulihkan atau menghapus permanen kelas di luar scope-nya', function () {
+    $prodiA = Prodi::factory()->create();
+    $prodiB = Prodi::factory()->create();
+    $kelasB = Kelas::factory()->create(['id_prodi' => $prodiB->id]);
+    $kelasB->delete();
+
+    $admin = adminUser('admin_akademik');
+    scopeAdminToProdi($admin, $prodiA->id);
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $kelasB->id)
+        ->assertStatus(403);
+
+    expect(Kelas::withTrashed()->find($kelasB->id)->trashed())->toBeTrue();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $kelasB->id)
+        ->call('forceDeleteKelas')
+        ->assertStatus(403);
+
+    expect(Kelas::withTrashed()->find($kelasB->id)->trashed())->toBeTrue();
 });
 
 it('admin dengan scope prodi tidak bisa membuka detail kelas di luar scope-nya', function () {

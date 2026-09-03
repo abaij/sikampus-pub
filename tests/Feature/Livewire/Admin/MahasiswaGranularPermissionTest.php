@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Admin\Mahasiswa\Form;
+use App\Livewire\Admin\Mahasiswa\Index;
 use App\Livewire\Admin\Mahasiswa\Show;
 use App\Models\Mahasiswa;
 use Livewire\Livewire;
@@ -44,6 +45,52 @@ it('blocks a view-only akademik admin from deleting mahasiswa via the livewire m
         ->assertStatus(403);
 
     expect(Mahasiswa::find($mahasiswa->id))->not->toBeNull();
+});
+
+it('blocks a view-only akademik admin from restoring or permanently deleting mahasiswa via the livewire methods directly', function () {
+    $admin = adminUser('admin_akademik');
+    $mahasiswa = Mahasiswa::factory()->create();
+    $mahasiswa->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $mahasiswa->id)
+        ->assertStatus(403);
+
+    expect(Mahasiswa::withTrashed()->find($mahasiswa->id)->trashed())->toBeTrue();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $mahasiswa->id)
+        ->assertStatus(403);
+
+    expect(Mahasiswa::withTrashed()->find($mahasiswa->id)->trashed())->toBeTrue();
+});
+
+it('lets an akademik admin restore and permanently delete mahasiswa once granted delete mahasiswa', function () {
+    $admin = adminUser('admin_akademik');
+    $admin->givePermissionTo(['delete mahasiswa']);
+    $mahasiswa = Mahasiswa::factory()->create();
+    $mahasiswa->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('restore', $mahasiswa->id);
+
+    expect(Mahasiswa::find($mahasiswa->id))->not->toBeNull();
+
+    $mahasiswa->refresh()->delete();
+
+    Livewire::actingAs($admin)
+        ->test(Index::class)
+        ->set('showTrashed', true)
+        ->call('confirmForceDelete', $mahasiswa->id)
+        ->call('forceDeleteMahasiswa');
+
+    expect(Mahasiswa::withTrashed()->find($mahasiswa->id))->toBeNull();
 });
 
 it('lets an akademik admin create, edit, and delete mahasiswa once granted the specific permissions', function () {
