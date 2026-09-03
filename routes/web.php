@@ -12,6 +12,7 @@ use App\Http\Controllers\MahasiswaController;
 use App\Http\Controllers\MatkulController;
 use App\Http\Controllers\NegaraController;
 use App\Http\Controllers\NilaiController;
+use App\Http\Controllers\PerkuliahanController;
 use App\Http\Controllers\ProvinsiController;
 use App\Http\Controllers\SurveyController;
 use App\Http\Controllers\TugasAkhirController;
@@ -107,6 +108,7 @@ use App\Livewire\Admin\Pengguna\Show as PenggunaShow;
 use App\Livewire\Admin\Pengumuman\Form as PengumumanForm;
 use App\Livewire\Admin\Pengumuman\Index as PengumumanIndex;
 use App\Livewire\Admin\PerguruanTinggi as AdminPerguruanTinggi;
+use App\Livewire\Admin\Perkuliahan\Import as PerkuliahanImport;
 use App\Livewire\Admin\Perkuliahan\Index as PerkuliahanIndex;
 use App\Livewire\Admin\Perkuliahan\Nilai as PerkuliahanNilai;
 use App\Livewire\Admin\Perkuliahan\Show as PerkuliahanShow;
@@ -473,7 +475,11 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
 
         // Modul monitoring, tanpa create/edit — cermin dari halaman admin/perkuliahan di frontend
         // (daftar kelas + detail sesi & rekap kehadiran per kelas).
+        // Rute literal (template/import/nilai) harus didaftarkan sebelum 'akademik/perkuliahan/{id}'
+        // supaya tidak tertangkap sebagai id (lihat catatan di skill siak-livewire-module).
         Route::livewire('akademik/perkuliahan', PerkuliahanIndex::class)->name('akademik.perkuliahan');
+        Route::get('akademik/perkuliahan/template/download', [PerkuliahanController::class, 'downloadImportTemplate'])->name('akademik.perkuliahan.template');
+        Route::livewire('akademik/perkuliahan/import', PerkuliahanImport::class)->name('akademik.perkuliahan.import');
         Route::livewire('akademik/perkuliahan/nilai/{id}', PerkuliahanNilai::class)->name('akademik.perkuliahan.nilai');
         Route::livewire('akademik/perkuliahan/{id}', PerkuliahanShow::class)->name('akademik.perkuliahan.show');
 

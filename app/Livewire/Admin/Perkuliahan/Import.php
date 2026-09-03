@@ -1,0 +1,413 @@
+<?php
+
+namespace App\Livewire\Admin\Perkuliahan;
+
+use App\Models\Jadwal;
+use App\Models\Kelas;
+use App\Models\KelompokKelas;
+use App\Models\KurikulumMatkul;
+use App\Models\MateriPerkuliahan;
+use App\Models\Perkuliahan;
+use App\Models\Ruangan;
+use App\Models\Semester;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Component;
+use Livewire\WithFileUploads;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Shared\Date as SpreadsheetDate;
+
+class Import extends Component
+{
+    use WithFileUploads;
+
+    public $file = null;
+
+    public bool $processing = false;
+
+    public ?array $result = null;
+
+    protected function rules(): array
+    {
+        return [
+            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+        ];
+    }
+
+    /**
+     * Sama persis dengan PerkuliahanController::importSpreadsheet — id_jadwal langsung, atau
+     * kunci alami (semester + MK + kelompok + pertemuan, sama seperti impor Jadwal) untuk mencari
+     * baris jadwal yang SUDAH ADA, lalu menyimpan realisasi (waktu & materi) di tabel perkuliahan.
+     * Opsional: path file materi → insert ke tabel materi_perkuliahan. Hasil ditaruh di $result,
+     * bukan JsonResponse.
+     */
+    public function import(): void
+    {
+        $this->result = null;
+        $this->processing = true;
+        $this->validate();
+
+        $user = Auth::user();
+        $allowedProdiIds = ($user && $user->hasScopeRestriction()) ? $user->getAllowedProdiIds() : null;
+        $actor = $user ? (string) ($user->email ?? $user->id) : 'import';
+
+        try {
+            $spreadsheet = IOFactory::load($this->file->getRealPath());
+        } catch (\Throwable $e) {
+            $this->processing = false;
+            $this->addError('file', 'Gagal membaca file Excel. Pastikan format .xlsx/.xls valid. Detail: '.$e->getMessage());
+
+            return;
+        }
+
+        $worksheet = $spreadsheet->getActiveSheet();
+        $rows = $worksheet->toArray();
+
+        if (count($rows) < 2) {
+            $this->processing = false;
+            $this->addError('file', 'File Excel kosong atau tidak valid.');
+            $this->reset('file');
+
+            return;
+        }
+
+        array_shift($rows);
+
+        $errors = [];
+        $perkuliahanSuccessCount = 0;
+        $materiPerkuliahanSuccessCount = 0;
+        $skipCount = 0;
+
+        DB::beginTransaction();
+        try {
+            foreach ($rows as $rowIndex => $row) {
+                $rowNumber = $rowIndex + 2;
+
+                if (empty(array_filter($row, fn ($c) => $c !== null && $c !== ''))) {
+                    continue;
+                }
+
+                $idJadwalRaw = trim((string) ($row[0] ?? ''));
+                $kodeSemester = trim((string) ($row[1] ?? ''));
+                $kodeMatkul = trim((string) ($row[2] ?? ''));
+                $namaKelompokKelas = trim((string) ($row[3] ?? ''));
+                $urutanRaw = trim((string) ($row[4] ?? ''));
+                $namaRuangan = trim((string) ($row[5] ?? ''));
+                $waktuMulaiRaw = $row[6] ?? null;
+                $waktuSelesaiRaw = $row[7] ?? null;
+                $materi = trim((string) ($row[8] ?? ''));
+                $realisasiMateri = trim((string) ($row[9] ?? ''));
+                $namaMateriFile = trim((string) ($row[10] ?? ''));
+                $pathMateriFileRaw = trim((string) ($row[11] ?? ''));
+
+                $waktuMulai = $this->parseImportDateTime($waktuMulaiRaw);
+                $hasPerkuliahanRow = $waktuMulai !== null;
+
+                if (! $hasPerkuliahanRow && $pathMateriFileRaw === '') {
+                    $errors[] = "Baris {$rowNumber}: Isi Waktu Mulai (perkuliahan) atau Path file materi (minimal salah satu).";
+
+                    continue;
+                }
+
+                if ($hasPerkuliahanRow && $namaMateriFile !== '' && $pathMateriFileRaw === '') {
+                    $errors[] = "Baris {$rowNumber}: Kolom Nama berkas materi diisi tetapi Path file materi kosong.";
+
+                    continue;
+                }
+
+                $waktuSelesai = $this->parseImportDateTime($waktuSelesaiRaw);
+
+                if ($hasPerkuliahanRow) {
+                    if ($waktuSelesai && $waktuSelesai->lte($waktuMulai)) {
+                        $errors[] = "Baris {$rowNumber}: Waktu Selesai harus setelah Waktu Mulai.";
+
+                        continue;
+                    }
+
+                    if (strlen($materi) > 255) {
+                        $errors[] = "Baris {$rowNumber}: Materi ringkas maksimal 255 karakter.";
+
+                        continue;
+                    }
+                }
+
+                if (strlen($namaMateriFile) > 255) {
+                    $errors[] = "Baris {$rowNumber}: Nama berkas materi maksimal 255 karakter.";
+
+                    continue;
+                }
+
+                $jadwal = null;
+
+                if ($idJadwalRaw !== '' && ctype_digit($idJadwalRaw)) {
+                    $jid = (int) $idJadwalRaw;
+                    $jadwal = Jadwal::with('kelas')->whereNull('deleted_at')->find($jid);
+                    if (! $jadwal) {
+                        $errors[] = "Baris {$rowNumber}: id_jadwal {$jid} tidak ditemukan.";
+
+                        continue;
+                    }
+                    if ($allowedProdiIds !== null && ! in_array((int) $jadwal->kelas->id_prodi, $allowedProdiIds, true)) {
+                        $errors[] = "Baris {$rowNumber}: Tidak ada akses ke prodi kelas jadwal ini.";
+                        $skipCount++;
+
+                        continue;
+                    }
+                } else {
+                    if ($kodeSemester === '' || $kodeMatkul === '') {
+                        $errors[] = "Baris {$rowNumber}: Isi id_jadwal atau kombinasi Kode Semester + Kode Mata Kuliah.";
+
+                        continue;
+                    }
+                    if ($urutanRaw === '' || ! ctype_digit($urutanRaw) || (int) $urutanRaw < 1 || (int) $urutanRaw > 99) {
+                        $errors[] = "Baris {$rowNumber}: Pertemuan ke- wajib (angka 1-99).";
+
+                        continue;
+                    }
+                    $urutan = (int) $urutanRaw;
+
+                    [$kelas, $kelasErr] = $this->resolveKelasFromImportKeys($kodeSemester, $kodeMatkul, $namaKelompokKelas);
+                    if ($kelasErr !== null) {
+                        $errors[] = "Baris {$rowNumber}: {$kelasErr}";
+
+                        continue;
+                    }
+                    if ($allowedProdiIds !== null && ! in_array((int) $kelas->id_prodi, $allowedProdiIds, true)) {
+                        $errors[] = "Baris {$rowNumber}: Tidak ada akses ke prodi ini.";
+                        $skipCount++;
+
+                        continue;
+                    }
+
+                    [$jadwal, $jadwalErr] = $this->findJadwalSlotForImport($kelas, $urutan, $namaRuangan);
+                    if ($jadwalErr !== null || ! $jadwal) {
+                        $errors[] = "Baris {$rowNumber}: ".($jadwalErr ?? 'Jadwal tidak ditemukan.');
+
+                        continue;
+                    }
+                }
+
+                $materiVal = $materi !== '' ? $materi : null;
+                $realisasiVal = $realisasiMateri !== '' ? $realisasiMateri : null;
+
+                $createdPerkuliahan = false;
+
+                if ($hasPerkuliahanRow) {
+                    $exists = Perkuliahan::where('id_jadwal', $jadwal->id)
+                        ->where('waktu_mulai', $waktuMulai->format('Y-m-d H:i:s'))
+                        ->whereNull('deleted_at')
+                        ->exists();
+
+                    if ($exists) {
+                        $skipCount++;
+                        $errors[] = "Baris {$rowNumber}: Sudah ada perkuliahan untuk jadwal ini pada waktu mulai yang sama (diabaikan).";
+                    } else {
+                        Perkuliahan::create([
+                            'id_jadwal' => $jadwal->id,
+                            'tanggal' => $waktuMulai->toDateString(),
+                            'waktu_mulai' => $waktuMulai,
+                            'waktu_selesai' => $waktuSelesai,
+                            'materi' => $materiVal,
+                            'realisasi_materi' => $realisasiVal,
+                            'created_by' => $actor,
+                        ]);
+                        $createdPerkuliahan = true;
+                        $perkuliahanSuccessCount++;
+                    }
+                }
+
+                if ($pathMateriFileRaw !== '') {
+                    $normalizedPath = $this->normalizeMateriFilePathForImport($pathMateriFileRaw);
+                    if ($normalizedPath === '') {
+                        $errors[] = "Baris {$rowNumber}: Path file materi tidak valid.";
+
+                        continue;
+                    }
+                    if (strlen($normalizedPath) > 255) {
+                        $errors[] = "Baris {$rowNumber}: Path file materi maksimal 255 karakter.";
+
+                        continue;
+                    }
+                    if (! Storage::disk('public')->exists($normalizedPath)) {
+                        $errors[] = "Baris {$rowNumber}: Berkas tidak ditemukan di storage public: {$normalizedPath} (unggah ke storage/app/public atau salin ke folder tersebut).";
+
+                        continue;
+                    }
+
+                    $dupMateri = MateriPerkuliahan::where('id_jadwal', $jadwal->id)
+                        ->where('file', $normalizedPath)
+                        ->whereNull('deleted_at')
+                        ->exists();
+
+                    if ($dupMateri) {
+                        $skipCount++;
+                        $errors[] = "Baris {$rowNumber}: Materi file dengan path yang sama sudah ada untuk slot jadwal ini (diabaikan).";
+                    } else {
+                        MateriPerkuliahan::create([
+                            'id_jadwal' => $jadwal->id,
+                            'nama' => $namaMateriFile !== '' ? $namaMateriFile : null,
+                            'file' => $normalizedPath,
+                        ]);
+                        $materiPerkuliahanSuccessCount++;
+                    }
+                } elseif ($pathMateriFileRaw === '' && $hasPerkuliahanRow && ! $createdPerkuliahan) {
+                    continue;
+                }
+            }
+
+            $totalSuccess = $perkuliahanSuccessCount + $materiPerkuliahanSuccessCount;
+
+            if (! empty($errors) && $totalSuccess === 0) {
+                DB::rollBack();
+
+                $this->result = [
+                    'success_count' => 0,
+                    'materi_perkuliahan_count' => 0,
+                    'skip_count' => $skipCount,
+                    'errors' => $errors,
+                ];
+                $this->processing = false;
+
+                return;
+            }
+
+            DB::commit();
+
+            $this->result = [
+                'success_count' => $perkuliahanSuccessCount,
+                'materi_perkuliahan_count' => $materiPerkuliahanSuccessCount,
+                'skip_count' => $skipCount,
+                'errors' => $errors,
+            ];
+            $this->reset('file');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            $this->addError('file', 'Terjadi kesalahan saat mengimport data: '.$e->getMessage());
+        }
+
+        $this->processing = false;
+    }
+
+    private function parseImportDateTime(mixed $value): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            try {
+                return Carbon::instance(SpreadsheetDate::excelToDateTimeObject((float) $value));
+            } catch (\Throwable) {
+                // lanjut coba string
+            }
+        }
+        $s = trim((string) $value);
+        if ($s === '') {
+            return null;
+        }
+        try {
+            return Carbon::parse($s);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array{0: ?Kelas, 1: ?string} Kelas atau pesan error
+     */
+    private function resolveKelasFromImportKeys(string $kodeSemester, string $kodeMatkul, string $namaKelompokKelas): array
+    {
+        $semester = Semester::where('kode', $kodeSemester)->first();
+        if (! $semester) {
+            return [null, "Semester '{$kodeSemester}' tidak ditemukan."];
+        }
+
+        $kurikulumMatkulIds = KurikulumMatkul::query()
+            ->where('kode_matkul', $kodeMatkul)
+            ->pluck('id');
+        if ($kurikulumMatkulIds->isEmpty()) {
+            return [null, "Mata kuliah dengan kode '{$kodeMatkul}' tidak ditemukan di kurikulum."];
+        }
+
+        $kelasQuery = Kelas::query()
+            ->whereIn('id_kurikulum_matkul', $kurikulumMatkulIds)
+            ->where('id_semester', $semester->id);
+
+        if ($namaKelompokKelas !== '') {
+            $kelompok = KelompokKelas::query()
+                ->whereRaw('LOWER(TRIM(nama)) = ?', [mb_strtolower($namaKelompokKelas)])
+                ->first();
+            if (! $kelompok) {
+                return [null, "Kelas mahasiswa '{$namaKelompokKelas}' tidak ditemukan."];
+            }
+            $kelasQuery->where('id_kelompok_kelas', $kelompok->id);
+        } else {
+            $kelasQuery->whereNull('id_kelompok_kelas');
+        }
+
+        $kelasCandidates = $kelasQuery->get();
+        if ($kelasCandidates->isEmpty()) {
+            return [null, 'Kelas tidak ditemukan untuk kombinasi semester, kode mata kuliah, dan nama kelas mahasiswa (kosong = tanpa kelas mahasiswa).'];
+        }
+        if ($kelasCandidates->count() > 1) {
+            return [null, 'Ditemukan beberapa baris kelas yang cocok — perjelas di data master kelas.'];
+        }
+
+        return [$kelasCandidates->first(), null];
+    }
+
+    /**
+     * @return array{0: ?Jadwal, 1: ?string}
+     */
+    private function findJadwalSlotForImport(Kelas $kelas, int $urutan, string $namaRuangan): array
+    {
+        $candidates = Jadwal::where('id_kelas', $kelas->id)
+            ->where('urutan_pertemuan', $urutan)
+            ->whereNull('deleted_at')
+            ->get();
+
+        if ($candidates->isEmpty()) {
+            return [null, "Tidak ada slot jadwal untuk pertemuan ke-{$urutan} pada kelas ini."];
+        }
+
+        if ($candidates->count() === 1) {
+            return [$candidates->first(), null];
+        }
+
+        if ($namaRuangan !== '') {
+            $ruangan = Ruangan::where('nama', 'like', '%'.$namaRuangan.'%')->first();
+            if (! $ruangan) {
+                return [null, "Ruangan '{$namaRuangan}' tidak ditemukan (diperlukan untuk membedakan beberapa slot jadwal)."];
+            }
+            $match = $candidates->firstWhere('id_ruangan', $ruangan->id);
+            if (! $match) {
+                return [null, 'Tidak ada jadwal dengan ruangan tersebut untuk pertemuan ini.'];
+            }
+
+            return [$match, null];
+        }
+
+        return [null, 'Ditemukan beberapa slot jadwal untuk pertemuan ini — isi kolom Nama Ruangan atau gunakan id_jadwal.'];
+    }
+
+    /**
+     * Normalisasi path relatif ke root disk "public" (storage/app/public).
+     */
+    private function normalizeMateriFilePathForImport(string $raw): string
+    {
+        $p = trim(str_replace('\\', '/', $raw));
+        $p = ltrim($p, '/');
+        if (str_starts_with($p, 'storage/')) {
+            $p = substr($p, strlen('storage/'));
+        }
+
+        return $p;
+    }
+
+    public function render()
+    {
+        return view('livewire.admin.perkuliahan.import')->extends('layouts.web');
+    }
+}
