@@ -32,9 +32,18 @@ class PerkuliahanImportService
      */
     public function run(string $filePath, ?array $allowedProdiIds, string $actor): array
     {
-        $spreadsheet = IOFactory::load($filePath);
-        $worksheet = $spreadsheet->getActiveSheet();
-        $rows = $worksheet->toArray();
+        // Regresi yang pernah kejadian: tanpa try/catch di sini, error mentah dari PhpSpreadsheet
+        // (mis. TypeError array_intersect_key() dari mesin kalkulasi formula-nya kalau sel di file
+        // sumber mengandung formula yang tidak didukung) bocor apa adanya sampai ke error_message
+        // batch — bukan pesan ramah seperti importer lain di app ini (lihat Kelas/Krs/Nilai/dst
+        // \Import.php: pesan yang sama, "hindari rumus error").
+        try {
+            $spreadsheet = IOFactory::load($filePath);
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('Gagal membaca file Excel. Pastikan format .xlsx/.xls valid; hindari rumus error (#NAME?, #REF!). Salin data ke template lalu tempel sebagai nilai saja jika perlu. Detail: '.$e->getMessage(), previous: $e);
+        }
 
         if (count($rows) < 2) {
             throw new \RuntimeException('File Excel kosong atau tidak valid.');
@@ -232,7 +241,11 @@ class PerkuliahanImportService
                 'skip_count' => $skipCount,
                 'errors' => $errors,
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // \Throwable, bukan \Exception — TypeError/Error di tengah loop (mis. bug kalkulasi
+            // formula PhpSpreadsheet yang lolos dari try/catch load() di atas karena baru muncul
+            // saat toArray() dipanggil ulang, atau error lain) tetap harus memicu rollback,
+            // bukan meninggalkan transaksi menggantung.
             DB::rollBack();
 
             throw new \RuntimeException('Terjadi kesalahan saat mengimport data: '.$e->getMessage(), previous: $e);

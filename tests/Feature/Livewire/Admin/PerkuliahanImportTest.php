@@ -272,10 +272,17 @@ it('records an error when id_jadwal does not exist', function () {
     expect($result['errors'])->not->toBeEmpty();
 });
 
-it('marks the batch failed and surfaces the error when the file cannot be parsed', function () {
+it('marks the batch failed with a friendly message (not a raw PHP error) when the file cannot be parsed', function () {
+    // Regresi: PerkuliahanImportService::run() dulu tidak membungkus IOFactory::load()/toArray()
+    // dalam try/catch, jadi error mentah dari PhpSpreadsheet (mis. TypeError array_intersect_key()
+    // dari mesin kalkulasi formula-nya untuk sel berformula yang tidak didukung) bocor apa adanya
+    // ke error_message batch, bukan pesan ramah seperti importer lain di app ini.
     $admin = adminUser();
 
-    $file = UploadedFile::fake()->createWithContent('import.xlsx', 'not a real xlsx file');
+    // Plain text ("not a real xlsx file") diam-diam berhasil dibaca PhpSpreadsheet lewat fallback
+    // reader CSV (jadi lolos ke pesan "File Excel kosong", bukan jalur yang mau diuji di sini) —
+    // header ZIP acak ini yang benar-benar gagal diidentifikasi reader mana pun.
+    $file = UploadedFile::fake()->createWithContent('import.xlsx', "PK\x03\x04".random_bytes(200));
 
     Livewire::actingAs($admin)
         ->test(Import::class)
@@ -283,7 +290,7 @@ it('marks the batch failed and surfaces the error when the file cannot be parsed
         ->call('import')
         ->call('poll')
         ->assertSet('result', null)
-        ->assertSet('jobError', fn ($value) => $value !== null && $value !== '');
+        ->assertSet('jobError', fn ($value) => str_contains($value, 'Gagal membaca file Excel') && str_contains($value, 'hindari rumus error'));
 
     expect(ImportBatch::where('type', 'perkuliahan')->where('status', 'failed')->exists())->toBeTrue();
 });
