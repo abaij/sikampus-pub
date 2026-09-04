@@ -118,7 +118,7 @@
                 </button>
             </div>
 
-            <div class="mb-4 grid grid-cols-3 gap-4">
+            <div class="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <div class="rounded-lg bg-emerald-50 px-4 py-3">
                     <p class="text-xs font-semibold uppercase text-emerald-700">Perkuliahan Dibuat</p>
                     <p class="mt-1 text-2xl font-semibold text-emerald-700">{{ $result['success_count'] }}</p>
@@ -130,6 +130,12 @@
                 <div class="rounded-lg bg-rose-50 px-4 py-3">
                     <p class="text-xs font-semibold uppercase text-rose-700">Dilewati</p>
                     <p class="mt-1 text-2xl font-semibold text-rose-700">{{ $result['skip_count'] }}</p>
+                    <p class="mt-0.5 text-[11px] text-rose-600">Sudah ada / di luar akses</p>
+                </div>
+                <div class="rounded-lg bg-red-50 px-4 py-3">
+                    <p class="text-xs font-semibold uppercase text-red-700">Gagal</p>
+                    <p class="mt-1 text-2xl font-semibold text-red-700">{{ $result['failed_count'] }}</p>
+                    <p class="mt-0.5 text-[11px] text-red-600">Tidak tersimpan — lihat peringatan</p>
                 </div>
             </div>
 

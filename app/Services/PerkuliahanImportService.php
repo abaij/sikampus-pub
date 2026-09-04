@@ -28,7 +28,7 @@ class PerkuliahanImportService
 {
     /**
      * @param  array<int>|null  $allowedProdiIds  null = tanpa scope restriction
-     * @return array{success_count: int, materi_perkuliahan_count: int, skip_count: int, errors: array<int, string>}
+     * @return array{success_count: int, materi_perkuliahan_count: int, skip_count: int, failed_count: int, errors: array<int, string>}
      */
     public function run(string $filePath, ?array $allowedProdiIds, string $actor): array
     {
@@ -55,6 +55,11 @@ class PerkuliahanImportService
         $perkuliahanSuccessCount = 0;
         $materiPerkuliahanSuccessCount = 0;
         $skipCount = 0;
+        // Dilacak eksplisit (bukan diturunkan dari count($errors) - $skipCount) supaya tidak diam-diam
+        // ikut salah kalau ada $errors[] baru ditambahkan di masa depan tanpa menandai jenisnya —
+        // setiap error yang BUKAN "sudah ada/diabaikan" atau "di luar akses prodi" (dua-duanya sudah
+        // dihitung $skipCount) berarti baris itu gagal divalidasi dan sama sekali tidak tersimpan.
+        $failedCount = 0;
 
         DB::beginTransaction();
         try {
@@ -83,12 +88,14 @@ class PerkuliahanImportService
 
                 if (! $hasPerkuliahanRow && $pathMateriFileRaw === '') {
                     $errors[] = "Baris {$rowNumber}: Isi Waktu Mulai (perkuliahan) atau Path file materi (minimal salah satu).";
+                    $failedCount++;
 
                     continue;
                 }
 
                 if ($hasPerkuliahanRow && $namaMateriFile !== '' && $pathMateriFileRaw === '') {
                     $errors[] = "Baris {$rowNumber}: Kolom Nama berkas materi diisi tetapi Path file materi kosong.";
+                    $failedCount++;
 
                     continue;
                 }
@@ -98,12 +105,14 @@ class PerkuliahanImportService
                 if ($hasPerkuliahanRow) {
                     if ($waktuSelesai && $waktuSelesai->lte($waktuMulai)) {
                         $errors[] = "Baris {$rowNumber}: Waktu Selesai harus setelah Waktu Mulai.";
+                        $failedCount++;
 
                         continue;
                     }
 
                     if (strlen($materi) > 255) {
                         $errors[] = "Baris {$rowNumber}: Materi ringkas maksimal 255 karakter.";
+                        $failedCount++;
 
                         continue;
                     }
@@ -111,6 +120,7 @@ class PerkuliahanImportService
 
                 if (strlen($namaMateriFile) > 255) {
                     $errors[] = "Baris {$rowNumber}: Nama berkas materi maksimal 255 karakter.";
+                    $failedCount++;
 
                     continue;
                 }
@@ -122,6 +132,7 @@ class PerkuliahanImportService
                     $jadwal = Jadwal::with('kelas')->whereNull('deleted_at')->find($jid);
                     if (! $jadwal) {
                         $errors[] = "Baris {$rowNumber}: id_jadwal {$jid} tidak ditemukan.";
+                        $failedCount++;
 
                         continue;
                     }
@@ -134,11 +145,13 @@ class PerkuliahanImportService
                 } else {
                     if ($kodeSemester === '' || $kodeMatkul === '') {
                         $errors[] = "Baris {$rowNumber}: Isi id_jadwal atau kombinasi Kode Semester + Kode Mata Kuliah.";
+                        $failedCount++;
 
                         continue;
                     }
                     if ($urutanRaw === '' || ! ctype_digit($urutanRaw) || (int) $urutanRaw < 1 || (int) $urutanRaw > 99) {
                         $errors[] = "Baris {$rowNumber}: Pertemuan ke- wajib (angka 1-99).";
+                        $failedCount++;
 
                         continue;
                     }
@@ -147,6 +160,7 @@ class PerkuliahanImportService
                     [$kelas, $kelasErr] = $this->resolveKelasFromImportKeys($kodeSemester, $kodeMatkul, $namaKelompokKelas);
                     if ($kelasErr !== null) {
                         $errors[] = "Baris {$rowNumber}: {$kelasErr}";
+                        $failedCount++;
 
                         continue;
                     }
@@ -160,6 +174,7 @@ class PerkuliahanImportService
                     [$jadwal, $jadwalErr] = $this->findJadwalSlotForImport($kelas, $urutan, $namaRuangan);
                     if ($jadwalErr !== null || ! $jadwal) {
                         $errors[] = "Baris {$rowNumber}: ".($jadwalErr ?? 'Jadwal tidak ditemukan.');
+                        $failedCount++;
 
                         continue;
                     }
@@ -198,16 +213,19 @@ class PerkuliahanImportService
                     $normalizedPath = $this->normalizeMateriFilePathForImport($pathMateriFileRaw);
                     if ($normalizedPath === '') {
                         $errors[] = "Baris {$rowNumber}: Path file materi tidak valid.";
+                        $failedCount++;
 
                         continue;
                     }
                     if (strlen($normalizedPath) > 255) {
                         $errors[] = "Baris {$rowNumber}: Path file materi maksimal 255 karakter.";
+                        $failedCount++;
 
                         continue;
                     }
                     if (! Storage::disk('public')->exists($normalizedPath)) {
                         $errors[] = "Baris {$rowNumber}: Berkas tidak ditemukan di storage public: {$normalizedPath} (unggah ke storage/app/public atau salin ke folder tersebut).";
+                        $failedCount++;
 
                         continue;
                     }
@@ -239,6 +257,7 @@ class PerkuliahanImportService
                 'success_count' => $perkuliahanSuccessCount,
                 'materi_perkuliahan_count' => $materiPerkuliahanSuccessCount,
                 'skip_count' => $skipCount,
+                'failed_count' => $failedCount,
                 'errors' => $errors,
             ];
         } catch (\Throwable $e) {

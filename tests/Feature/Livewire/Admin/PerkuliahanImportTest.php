@@ -116,6 +116,7 @@ it('completes the batch and reflects the result after one poll tick (queue runs 
         ->assertSet('result.success_count', 1)
         ->assertSet('result.materi_perkuliahan_count', 0)
         ->assertSet('result.skip_count', 0)
+        ->assertSet('result.failed_count', 0)
         ->assertSet('batchId', null);
 
     $perkuliahan = Perkuliahan::where('id_jadwal', $jadwal->id)->firstOrFail();
@@ -184,7 +185,8 @@ it('skips a row whose realisasi already exists for the same jadwal and waktu mul
         ->call('import')
         ->call('poll')
         ->assertSet('result.success_count', 0)
-        ->assertSet('result.skip_count', 1);
+        ->assertSet('result.skip_count', 1)
+        ->assertSet('result.failed_count', 0);
 
     expect(Perkuliahan::where('id_jadwal', $jadwal->id)->count())->toBe(1);
 });
@@ -229,6 +231,8 @@ it('records an error when the materi file path does not exist in storage', funct
         ->call('import')
         ->call('poll')
         ->assertSet('result.materi_perkuliahan_count', 0)
+        ->assertSet('result.failed_count', 1)
+        ->assertSet('result.skip_count', 0)
         ->get('result');
 
     expect($result['errors'])->not->toBeEmpty();
@@ -249,6 +253,8 @@ it('records an error when neither waktu mulai nor path materi is filled', functi
         ->call('import')
         ->call('poll')
         ->assertSet('result.success_count', 0)
+        ->assertSet('result.failed_count', 1)
+        ->assertSet('result.skip_count', 0)
         ->get('result');
 
     expect($result['errors'])->not->toBeEmpty();
@@ -267,9 +273,38 @@ it('records an error when id_jadwal does not exist', function () {
         ->call('import')
         ->call('poll')
         ->assertSet('result.success_count', 0)
+        ->assertSet('result.failed_count', 1)
+        ->assertSet('result.skip_count', 0)
         ->get('result');
 
     expect($result['errors'])->not->toBeEmpty();
+});
+
+it('distinguishes failed rows from skipped rows in the same import — the exact confusion this counter was added to resolve', function () {
+    $admin = adminUser();
+    $jadwal = Jadwal::factory()->create();
+    Perkuliahan::factory()->create([
+        'id_jadwal' => $jadwal->id,
+        'waktu_mulai' => '2026-01-15 08:00:00',
+    ]);
+
+    $file = makePerkuliahanImportFile([
+        // Baris 1: gagal validasi — semester dengan kode ini tidak ada, bukan "dilewati".
+        ['', 'TIDAK-ADA-SEMESTER', 'MK001', '', '1', '', '2026-01-01 08:00', '', '', '', '', ''],
+        // Baris 2: dilewati — realisasi untuk jadwal & waktu mulai ini sudah ada.
+        [$jadwal->id, '', '', '', '', '', '2026-01-15 08:00', '', '', '', '', ''],
+        // Baris 3: berhasil.
+        [$jadwal->id, '', '', '', '', '', '2026-02-01 08:00', '', '', '', '', ''],
+    ]);
+
+    Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->call('poll')
+        ->assertSet('result.success_count', 1)
+        ->assertSet('result.skip_count', 1)
+        ->assertSet('result.failed_count', 1);
 });
 
 it('marks the batch failed with a friendly message (not a raw PHP error) when the file cannot be parsed', function () {
@@ -317,7 +352,8 @@ it('scopes import by allowed prodi for a prodi-restricted admin', function () {
         ->call('import')
         ->call('poll')
         ->assertSet('result.success_count', 1)
-        ->assertSet('result.skip_count', 1);
+        ->assertSet('result.skip_count', 1)
+        ->assertSet('result.failed_count', 0);
 
     expect(Perkuliahan::where('id_jadwal', $jadwalA->id)->exists())->toBeTrue();
     expect(Perkuliahan::where('id_jadwal', $jadwalB->id)->exists())->toBeFalse();
