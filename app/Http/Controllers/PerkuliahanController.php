@@ -831,18 +831,24 @@ class PerkuliahanController extends Controller
                 $namaMateriFile = trim((string) ($row[10] ?? ''));
                 $pathMateriFileRaw = trim((string) ($row[11] ?? ''));
 
+                // Ditempel ke setiap pesan log baris (lihat importLogContext()) supaya mudah dilacak;
+                // $logProdiNama baru terisi setelah kelas/jadwal berhasil di-resolve di bawah, jadi
+                // error sebelum itu (validasi Waktu Mulai, panjang teks, dst) belum menyertakannya.
+                $logKodeMatkul = $kodeMatkul !== '' ? $kodeMatkul : null;
+                $logProdiNama = null;
+
                 $waktuMulai = $this->parseImportDateTime($waktuMulaiRaw);
                 $hasPerkuliahanRow = $waktuMulai !== null;
 
                 if (! $hasPerkuliahanRow && $pathMateriFileRaw === '') {
-                    $errors[] = "Baris {$rowNumber}: Isi Waktu Mulai (perkuliahan) atau Path file materi (minimal salah satu).";
+                    $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Isi Waktu Mulai (perkuliahan) atau Path file materi (minimal salah satu).';
                     $failedCount++;
 
                     continue;
                 }
 
                 if ($hasPerkuliahanRow && $namaMateriFile !== '' && $pathMateriFileRaw === '') {
-                    $errors[] = "Baris {$rowNumber}: Kolom Nama berkas materi diisi tetapi Path file materi kosong.";
+                    $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Kolom Nama berkas materi diisi tetapi Path file materi kosong.';
                     $failedCount++;
 
                     continue;
@@ -852,21 +858,21 @@ class PerkuliahanController extends Controller
 
                 if ($hasPerkuliahanRow) {
                     if ($waktuSelesai && $waktuSelesai->lte($waktuMulai)) {
-                        $errors[] = "Baris {$rowNumber}: Waktu Selesai harus setelah Waktu Mulai.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Waktu Selesai harus setelah Waktu Mulai.';
                         $failedCount++;
 
                         continue;
                     }
 
                     if (strlen($materi) > 255) {
-                        $errors[] = "Baris {$rowNumber}: Materi ringkas maksimal 255 karakter.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Materi ringkas maksimal 255 karakter.';
                         $failedCount++;
 
                         continue;
                     }
                     /*
                     if (strlen($realisasiMateri) > 255) {
-                        $errors[] = "Baris {$rowNumber}: Realisasi Materi maksimal 255 karakter.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).": Realisasi Materi maksimal 255 karakter.";
 
                         continue;
                     }
@@ -874,7 +880,7 @@ class PerkuliahanController extends Controller
                 }
 
                 if (strlen($namaMateriFile) > 255) {
-                    $errors[] = "Baris {$rowNumber}: Nama berkas materi maksimal 255 karakter.";
+                    $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Nama berkas materi maksimal 255 karakter.';
                     $failedCount++;
 
                     continue;
@@ -884,28 +890,32 @@ class PerkuliahanController extends Controller
 
                 if ($idJadwalRaw !== '' && ctype_digit($idJadwalRaw)) {
                     $jid = (int) $idJadwalRaw;
-                    $jadwal = Jadwal::with('kelas')->whereNull('deleted_at')->find($jid);
+                    $jadwal = Jadwal::with(['kelas.prodi', 'kelas.kurikulumMatkul.matkul'])->whereNull('deleted_at')->find($jid);
                     if (! $jadwal) {
-                        $errors[] = "Baris {$rowNumber}: id_jadwal {$jid} tidak ditemukan.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).": id_jadwal {$jid} tidak ditemukan.";
                         $failedCount++;
 
                         continue;
                     }
+                    if ($logKodeMatkul === null) {
+                        $logKodeMatkul = $jadwal->kelas?->kurikulumMatkul?->kodeMatkulLabel();
+                    }
+                    $logProdiNama = $jadwal->kelas?->prodi?->nama;
                     if ($allowedProdiIds !== null && ! in_array((int) $jadwal->kelas->id_prodi, $allowedProdiIds, true)) {
-                        $errors[] = "Baris {$rowNumber}: Tidak ada akses ke prodi kelas jadwal ini.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Tidak ada akses ke prodi kelas jadwal ini.';
                         $skipCount++;
 
                         continue;
                     }
                 } else {
                     if ($kodeSemester === '' || $kodeMatkul === '') {
-                        $errors[] = "Baris {$rowNumber}: Isi id_jadwal atau kombinasi Kode Semester + Kode Mata Kuliah.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Isi id_jadwal atau kombinasi Kode Semester + Kode Mata Kuliah.';
                         $failedCount++;
 
                         continue;
                     }
                     if ($urutanRaw === '' || ! ctype_digit($urutanRaw) || (int) $urutanRaw < 1 || (int) $urutanRaw > 99) {
-                        $errors[] = "Baris {$rowNumber}: Pertemuan ke- wajib (angka 1-99).";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Pertemuan ke- wajib (angka 1-99).';
                         $failedCount++;
 
                         continue;
@@ -914,13 +924,14 @@ class PerkuliahanController extends Controller
 
                     [$kelas, $kelasErr] = $this->resolveKelasFromImportKeys($kodeSemester, $kodeMatkul, $namaKelompokKelas);
                     if ($kelasErr !== null) {
-                        $errors[] = "Baris {$rowNumber}: {$kelasErr}";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).": {$kelasErr}";
                         $failedCount++;
 
                         continue;
                     }
+                    $logProdiNama = $kelas->prodi?->nama;
                     if ($allowedProdiIds !== null && ! in_array((int) $kelas->id_prodi, $allowedProdiIds, true)) {
-                        $errors[] = "Baris {$rowNumber}: Tidak ada akses ke prodi ini.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Tidak ada akses ke prodi ini.';
                         $skipCount++;
 
                         continue;
@@ -928,7 +939,7 @@ class PerkuliahanController extends Controller
 
                     [$jadwal, $jadwalErr] = $this->findJadwalSlotForImport($kelas, $urutan, $namaRuangan);
                     if ($jadwalErr !== null || ! $jadwal) {
-                        $errors[] = "Baris {$rowNumber}: ".($jadwalErr ?? 'Jadwal tidak ditemukan.');
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': '.($jadwalErr ?? 'Jadwal tidak ditemukan.');
                         $failedCount++;
 
                         continue;
@@ -948,7 +959,7 @@ class PerkuliahanController extends Controller
 
                     if ($exists) {
                         $skipCount++;
-                        $errors[] = "Baris {$rowNumber}: Sudah ada perkuliahan untuk jadwal ini pada waktu mulai yang sama (diabaikan).";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Sudah ada perkuliahan untuk jadwal ini pada waktu mulai yang sama (diabaikan).';
                     } else {
                         Perkuliahan::create([
                             'id_jadwal' => $jadwal->id,
@@ -967,19 +978,19 @@ class PerkuliahanController extends Controller
                 if ($pathMateriFileRaw !== '') {
                     $normalizedPath = $this->normalizeMateriFilePathForImport($pathMateriFileRaw);
                     if ($normalizedPath === '') {
-                        $errors[] = "Baris {$rowNumber}: Path file materi tidak valid.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Path file materi tidak valid.';
                         $failedCount++;
 
                         continue;
                     }
                     if (strlen($normalizedPath) > 255) {
-                        $errors[] = "Baris {$rowNumber}: Path file materi maksimal 255 karakter.";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Path file materi maksimal 255 karakter.';
                         $failedCount++;
 
                         continue;
                     }
                     if (! Storage::disk('public')->exists($normalizedPath)) {
-                        $errors[] = "Baris {$rowNumber}: Berkas tidak ditemukan di storage public: {$normalizedPath} (unggah ke storage/app/public atau salin ke folder tersebut).";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).": Berkas tidak ditemukan di storage public: {$normalizedPath} (unggah ke storage/app/public atau salin ke folder tersebut).";
                         $failedCount++;
 
                         continue;
@@ -992,7 +1003,7 @@ class PerkuliahanController extends Controller
 
                     if ($dupMateri) {
                         $skipCount++;
-                        $errors[] = "Baris {$rowNumber}: Materi file dengan path yang sama sudah ada untuk slot jadwal ini (diabaikan).";
+                        $errors[] = "Baris {$rowNumber}".$this->importLogContext($logKodeMatkul, $logProdiNama).': Materi file dengan path yang sama sudah ada untuk slot jadwal ini (diabaikan).';
                     } else {
                         MateriPerkuliahan::create([
                             'id_jadwal' => $jadwal->id,
@@ -1053,6 +1064,24 @@ class PerkuliahanController extends Controller
     }
 
     /**
+     * Info tambahan (kode mata kuliah & nama prodi) yang ditempel ke setiap pesan log import supaya
+     * mudah dilacak baris mana yang bermasalah tanpa perlu buka file sumber lagi — dikosongkan kalau
+     * belum diketahui di titik proses baris tersebut (mis. sebelum kelas/jadwal berhasil di-resolve).
+     */
+    private function importLogContext(?string $kodeMatkul, ?string $prodiNama): string
+    {
+        $parts = [];
+        if ($kodeMatkul !== null && $kodeMatkul !== '') {
+            $parts[] = "Matkul {$kodeMatkul}";
+        }
+        if ($prodiNama !== null && $prodiNama !== '') {
+            $parts[] = "Prodi {$prodiNama}";
+        }
+
+        return $parts === [] ? '' : ' ('.implode(', ', $parts).')';
+    }
+
+    /**
      * Normalisasi path relatif ke root disk "public" (storage/app/public).
      */
     private function normalizeMateriFilePathForImport(string $raw): string
@@ -1107,6 +1136,7 @@ class PerkuliahanController extends Controller
         }
 
         $kelasQuery = Kelas::query()
+            ->with('prodi')
             ->whereIn('id_kurikulum_matkul', $kurikulumMatkulIds)
             ->where('id_semester', $semester->id);
 

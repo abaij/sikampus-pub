@@ -307,6 +307,69 @@ it('distinguishes failed rows from skipped rows in the same import — the exact
         ->assertSet('result.failed_count', 1);
 });
 
+it('includes kode matkul and nama prodi in the error message for a row resolved via natural keys', function () {
+    $semester = Semester::factory()->create(['kode' => '20241']);
+    $prodi = Prodi::factory()->create(['nama' => 'Teknik Informatika']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['kode_matkul' => 'MK002']);
+    // Kelas ada tapi sengaja tidak dibuatkan jadwal untuk pertemuan ke-1 supaya
+    // findJadwalSlotForImport() gagal — di titik ini kelas (dan prodi-nya) sudah ter-resolve.
+    Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_semester' => $semester->id,
+        'id_prodi' => $prodi->id,
+        'id_kelompok_kelas' => null,
+    ]);
+
+    $admin = adminUser();
+    $file = makePerkuliahanImportFile([
+        ['', $semester->kode, 'MK002', '', '1', '', '2026-01-15 08:00', '', '', '', '', ''],
+    ]);
+
+    $result = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->call('poll')
+        ->assertSet('result.failed_count', 1)
+        ->get('result');
+
+    expect($result['errors'][0])
+        ->toContain('Matkul MK002')
+        ->toContain('Prodi Teknik Informatika');
+});
+
+it('includes kode matkul and nama prodi derived from the jadwal when a row uses id_jadwal directly', function () {
+    $prodiAllowed = Prodi::factory()->create();
+    $prodiDenied = Prodi::factory()->create(['nama' => 'Sistem Informasi']);
+    $kurikulumMatkul = KurikulumMatkul::factory()->create(['kode_matkul' => 'MK003']);
+    $kelas = Kelas::factory()->create([
+        'id_kurikulum_matkul' => $kurikulumMatkul->id,
+        'id_prodi' => $prodiDenied->id,
+    ]);
+    $jadwal = Jadwal::factory()->create(['id_kelas' => $kelas->id]);
+
+    $admin = adminUser('admin_akademik');
+    scopeAdminToProdi($admin, $prodiAllowed->id);
+
+    // Baris hanya mengisi id_jadwal — kolom Kode Mata Kuliah kosong, jadi kode matkul di log
+    // harus diturunkan dari kelas milik jadwal ini, bukan dari kolom yang memang tidak diisi.
+    $file = makePerkuliahanImportFile([
+        [$jadwal->id, '', '', '', '', '', '2026-01-15 08:00', '', '', '', '', ''],
+    ]);
+
+    $result = Livewire::actingAs($admin)
+        ->test(Import::class)
+        ->set('file', $file)
+        ->call('import')
+        ->call('poll')
+        ->assertSet('result.skip_count', 1)
+        ->get('result');
+
+    expect($result['errors'][0])
+        ->toContain('Matkul MK003')
+        ->toContain('Prodi Sistem Informasi');
+});
+
 it('marks the batch failed with a friendly message (not a raw PHP error) when the file cannot be parsed', function () {
     // Regresi: PerkuliahanImportService::run() dulu tidak membungkus IOFactory::load()/toArray()
     // dalam try/catch, jadi error mentah dari PhpSpreadsheet (mis. TypeError array_intersect_key()
