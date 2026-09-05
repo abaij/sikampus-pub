@@ -185,6 +185,28 @@
         <div class="rounded-2xl bg-white p-6 shadow-border">
             <h2 class="text-sm font-semibold text-neutral-900">Cara memperbarui ke {{ $release->version }}</h2>
 
+            @if (
+                $inspector->type() !== \App\Services\Update\InstallationInspector::TYPE_MANAGED
+                && $inspector->isFullyWritable()
+            )
+                <p class="mt-3 text-sm text-neutral-600">
+                    Server ini memenuhi syarat pembaruan otomatis. Wizard akan mengunduh, memverifikasi,
+                    dan memasang versi baru langkah demi langkah, dengan berkas versi lama disimpan
+                    sebagai cadangan.
+                </p>
+                <a
+                    href="{{ route('superadmin.pembaruan') }}"
+                    class="mt-4 inline-flex items-center gap-2 rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-800"
+                >
+                    <i data-lucide="wand-2" class="h-4 w-4" aria-hidden="true"></i>
+                    Perbarui otomatis
+                </a>
+
+                <p class="mt-5 border-t border-neutral-100 pt-4 text-xs font-medium text-neutral-500">
+                    Atau lakukan manual:
+                </p>
+            @endif
+
             @if ($inspector->type() === \App\Services\Update\InstallationInspector::TYPE_MANAGED)
                 <p class="mt-3 text-sm text-neutral-600">
                     Instalasi ini dikelola Sikampus Cloud. Pembaruan dijalankan dari portal Sikampus,

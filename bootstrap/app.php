@@ -44,6 +44,19 @@ return Application::configure(basePath: dirname(__DIR__))
         // permintaan berbasis cookie (SPA) maupun bearer token.
         $middleware->statefulApi();
 
+        // Wizard pembaruan menyalakan mode pemeliharaan tepat sebelum menukar berkas aplikasi,
+        // lalu MASIH perlu menjalankan langkah-langkah berikutnya (migrasi, bersihkan cache,
+        // matikan pemeliharaan) lewat request berikutnya. Tanpa pengecualian ini, mode
+        // pemeliharaan mengunci halaman yang sedang menjalankan pembaruan itu sendiri, dan
+        // satu-satunya jalan keluar adalah menghapus storage/framework/down lewat shell —
+        // persis yang tidak dimiliki pengguna yang paling membutuhkan wizard ini.
+        //
+        // Aman karena seluruh rute di bawahnya tetap dijaga middleware superadmin.web.
+        $middleware->preventRequestsDuringMaintenance(except: [
+            'pembaruan',
+            'pembaruan/*',
+        ]);
+
         // Pastikan CORS middleware aktif untuk semua request
         $middleware->validateCsrfTokens(except: [
             'api/*',

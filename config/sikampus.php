@@ -67,6 +67,11 @@ return [
         // Sengaja pendek: halaman ini harus tetap terbuka cepat walau sumber rilis lambat.
         'timeout' => (int) env('SIKAMPUS_UPDATE_TIMEOUT', 8),
 
+        // Batas atas ukuran hasil ekstrak (guard zip-bomb, lihat PluginZipExtractor). Harus
+        // lebih besar dari ukuran aplikasi terpasang — vendor/ sendiri sudah ratusan MB — tapi
+        // tetap berhingga supaya arsip yang dibuat jahat tidak bisa memenuhi disk server.
+        'max_extracted_size_kb' => (int) env('SIKAMPUS_UPDATE_MAX_EXTRACTED_KB', 786432),
+
     ],
 
 ];

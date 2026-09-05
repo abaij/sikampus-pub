@@ -104,6 +104,44 @@ jawabannya.
 panel, untuk instalasi yang diperbarui dengan mengganti berkas manual dan tidak punya akses
 shell. Sengaja hanya migrate maju — tidak pernah rollback/fresh/refresh.
 
+### Wizard pembaruan otomatis
+
+`/pembaruan` ([SuperadminUpdateController](app/Http/Controllers/Web/SuperadminUpdateController.php))
+memasang versi baru langkah demi langkah. Dua jalur, dipilih server dari preflight:
+**arsip** (unduh zip rilis, tukar direktori) dan **git** (fast-forward + composer + npm).
+Instalasi Cloud ditolak — pembaruannya dijalankan dari portal.
+
+Bentuk pengamanannya, dan alasan masing-masing:
+
+- **Pekerjaan lambat dipisah dari pekerjaan berbahaya.** Unduh, verifikasi checksum, dan ekstrak
+  tidak menyentuh satu pun berkas hidup. Hanya `swap` yang berbahaya, dan langkah itu memakai
+  rename direktori (seketika), bukan menyalin ribuan berkas.
+- **Satu langkah per request.** Unduh dan ekstrak masing-masing bisa memakan menit; satu request
+  yang mengerjakan semuanya akan menabrak `max_execution_time` di hosting ketat — lingkungan
+  yang justru paling membutuhkan wizard ini. State-nya di tabel `update_runs`.
+- **Migrasi TIDAK dijalankan bersama swap**, melainkan di langkah `finalize` (request berikutnya).
+  Proses yang melakukan swap masih memegang autoloader dan kelas dari kode LAMA di memori; kelas
+  baru dari `vendor/` yang baru bisa gagal ditemukan. Request berikutnya boot bersih.
+- **Setiap pemindahan diperiksa nilai kembaliannya.** `File::move()`/`File::moveDirectory()`
+  mengembalikan `false` saat gagal dan **tidak pernah melempar exception** — mengandalkan
+  try/catch saja membuat penukaran yang gagal tampak berhasil dan rollback tidak pernah terpicu.
+- **Rollback** mengembalikan seluruh item yang sudah tertukar dari `backup/`. Diuji langsung di
+  [ArchiveUpdaterSwapTest](tests/Feature/Services/Update/ArchiveUpdaterSwapTest.php), yang bekerja
+  pada direktori sementara — perilaku ini tidak mungkin diuji terhadap instalasi yang berjalan.
+- **`public/storage` dibuat ulang** setelah swap. Ia symlink ke `storage/app/public` dan ikut
+  hilang bersama `public/`; tanpa dibuat ulang, seluruh unggahan berhenti tampil tanpa error
+  di mana pun.
+- **Maintenance mode dibiarkan menyala kalau gagal setelah swap** — aplikasi setengah tertukar
+  tidak boleh melayani pengunjung. Ada tombol khusus untuk mengangkatnya.
+- Rute `pembaruan*` dikecualikan dari maintenance di `bootstrap/app.php`; tanpa itu, menyalakan
+  maintenance mengunci halaman yang sedang menjalankan pembaruan.
+
+`.env`, `storage/`, dan `plugins/` tidak pernah disentuh — lihat
+[UpdatePaths](app/Services/Update/UpdatePaths.php), sumber tunggal daftar apa yang diganti dan
+apa yang dipertahankan. [LocalChangeDetector](app/Services/Update/LocalChangeDetector.php)
+membandingkan instalasi terhadap manifest versi terpasang supaya penyesuaian lokal kampus
+diperingatkan lebih dulu, bukan dihapus diam-diam.
+
 ### Pest test helpers (`tests/Pest.php`)
 
 - `adminUser(string $legacyRole = 'admin')` — creates a `User` with the legacy `role` column set,

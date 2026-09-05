@@ -28,6 +28,7 @@ use App\Http\Controllers\Web\NilaiExportController;
 use App\Http\Controllers\Web\SuperadminEnvConfigController;
 use App\Http\Controllers\Web\SuperadminMigrasiController;
 use App\Http\Controllers\Web\SuperadminTestUploadController;
+use App\Http\Controllers\Web\SuperadminUpdateController;
 use App\Http\Controllers\Web\SuperadminWebLoginController;
 use App\Http\Controllers\YudisiumController;
 use App\Livewire\Admin\AturanAksesKeuangan\Form as AturanAksesKeuanganForm;
@@ -265,6 +266,14 @@ Route::middleware(['auth', 'superadmin.web'])->group(function (): void {
     Route::put('/konfigurasi', [SuperadminEnvConfigController::class, 'update'])->name('superadmin.konfigurasi.update');
     Route::get('/migrasi', [SuperadminMigrasiController::class, 'index'])->name('superadmin.migrasi');
     Route::post('/migrasi', [SuperadminMigrasiController::class, 'run'])->name('superadmin.migrasi.run');
+
+    // Wizard pembaruan. Rute-rute ini DIKECUALIKAN dari mode pemeliharaan di bootstrap/app.php —
+    // lihat alasannya di sana; tetap dijaga middleware superadmin.web dari grup ini.
+    Route::get('/pembaruan', [SuperadminUpdateController::class, 'index'])->name('superadmin.pembaruan');
+    Route::post('/pembaruan/mulai', [SuperadminUpdateController::class, 'start'])->name('superadmin.pembaruan.mulai');
+    Route::post('/pembaruan/langkah', [SuperadminUpdateController::class, 'step'])->name('superadmin.pembaruan.langkah');
+    Route::post('/pembaruan/batal', [SuperadminUpdateController::class, 'cancel'])->name('superadmin.pembaruan.batal');
+    Route::post('/pembaruan/angkat-pemeliharaan', [SuperadminUpdateController::class, 'lift'])->name('superadmin.pembaruan.angkat');
     Route::get('/test-upload', [SuperadminTestUploadController::class, 'create'])->name('superadmin.test-upload');
     Route::post('/test-upload', [SuperadminTestUploadController::class, 'store'])->name('superadmin.test-upload.store');
 });
