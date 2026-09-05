@@ -135,6 +135,7 @@ use App\Livewire\Admin\Sistem\Lisensi as SistemLisensi;
 use App\Livewire\Admin\Sistem\Negara\Form as NegaraForm;
 use App\Livewire\Admin\Sistem\Negara\Import as NegaraImport;
 use App\Livewire\Admin\Sistem\Negara\Index as NegaraIndex;
+use App\Livewire\Admin\Sistem\Pembaruan as SistemPembaruan;
 use App\Livewire\Admin\Sistem\Pengaturan as SistemPengaturan;
 use App\Livewire\Admin\Sistem\Plugin as SistemPlugin;
 use App\Livewire\Admin\Sistem\Provinsi\Form as ProvinsiForm;
@@ -682,6 +683,7 @@ Route::prefix('admin')->name('admin.')->group(function (): void {
         Route::middleware('role.admin.superadmin')->group(function (): void {
             Route::livewire('sistem/pengaturan', SistemPengaturan::class)->name('sistem.pengaturan');
             Route::livewire('sistem/lisensi', SistemLisensi::class)->name('sistem.lisensi');
+            Route::livewire('sistem/pembaruan', SistemPembaruan::class)->name('sistem.pembaruan');
             Route::livewire('sistem/plugin', SistemPlugin::class)->name('sistem.plugin');
 
             // Data wilayah (Negara/Provinsi/Kota/Kecamatan) — rute literal (create/template/import)

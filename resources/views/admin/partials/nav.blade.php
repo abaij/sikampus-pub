@@ -92,6 +92,7 @@
                 ['label' => 'Sistem', 'children' => [
                     ['route' => 'admin.sistem.pengaturan', 'label' => 'SMTP'],
                     ['route' => 'admin.sistem.lisensi', 'label' => 'License Key'],
+                    ['route' => 'admin.sistem.pembaruan', 'label' => 'Cek Pembaruan'],
                     ['route' => 'admin.sistem.plugin', 'label' => 'Plugin'],
                     ['route' => 'admin.sistem.negara', 'label' => 'Negara'],
                     ['route' => 'admin.sistem.provinsi', 'label' => 'Provinsi'],
