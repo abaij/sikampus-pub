@@ -37,6 +37,11 @@ npm run build
 # Bangun artefak rilis siap pakai (zip berisi vendor/ + public/build/ yang sudah jadi)
 ./scripts/build-release.sh          # dari HEAD
 ./scripts/build-release.sh v1.1.0   # dari sebuah tag
+
+# Pembaruan lewat CLI — jalan darurat kalau wizard web mati di tengah langkah panjang.
+# Melanjutkan pembaruan yang tertunda, bukan memulai yang baru.
+php artisan sikampus:update
+php artisan sikampus:update --yes
 ```
 
 Tests run against a real MySQL database named `siak_testing` (see `phpunit.xml`), not sqlite —
@@ -135,6 +140,13 @@ Bentuk pengamanannya, dan alasan masing-masing:
   tidak boleh melayani pengunjung. Ada tombol khusus untuk mengangkatnya.
 - Rute `pembaruan*` dikecualikan dari maintenance di `bootstrap/app.php`; tanpa itu, menyalakan
   maintenance mengunci halaman yang sedang menjalankan pembaruan.
+
+[SikampusUpdate](app/Console/Commands/SikampusUpdate.php) (`php artisan sikampus:update`) adalah
+jalan darurat untuk wizard itu: request browser bisa mati di tengah langkah panjang di server
+dengan batas ketat, meninggalkan pembaruan berstatus `running` yang tidak ada yang melanjutkan.
+Perintah ini MELANJUTKAN run yang sama, bukan memulai yang baru — memulai baru berarti mengunduh
+ulang dan menumpuk direktori kerja. Ia juga berhenti sebelum `finalize` dan minta dijalankan
+sekali lagi, karena alasan autoloader yang sama seperti di wizard web.
 
 `.env`, `storage/`, dan `plugins/` tidak pernah disentuh — lihat
 [UpdatePaths](app/Services/Update/UpdatePaths.php), sumber tunggal daftar apa yang diganti dan
