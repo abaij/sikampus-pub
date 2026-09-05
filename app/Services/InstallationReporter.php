@@ -44,6 +44,11 @@ class InstallationReporter
             'license_key' => $licenseKey,
             'app_url' => config('app.url'),
             'app_name' => config('app.name'),
+            // Dikirim supaya Sikampus Server tahu instalasi ini jalan di versi berapa, tanpa
+            // perlu menghubungi instance-nya balik. Endpoint /api/installations di sana sudah
+            // menerima & menyimpan field ini sejak awal (installations.metadata.app_version),
+            // jadi tidak ada perubahan yang dibutuhkan di sisi server untuk mulai memakainya.
+            'app_version' => config('sikampus.version'),
             'institution' => [
                 'name' => $univSettings->get('app_univ_name'),
                 'email' => $univSettings->get('app_univ_email'),

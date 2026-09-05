@@ -218,6 +218,7 @@
     @if ($namaPerguruanTinggi)
         &middot; {{ $namaPerguruanTinggi }}
     @endif
+    &middot; <span title="Versi Sikampus yang terpasang">v{{ config('sikampus.version') }}</span>
 </footer>
 
 <script>

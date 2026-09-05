@@ -34,9 +34,41 @@ npm run dev
 npm run build
 ```
 
+# Bangun artefak rilis siap pakai (zip berisi vendor/ + public/build/ yang sudah jadi)
+./scripts/build-release.sh          # dari HEAD
+./scripts/build-release.sh v1.1.0   # dari sebuah tag
+```
+
 Tests run against a real MySQL database named `siak_testing` (see `phpunit.xml`), not sqlite —
 create that database locally before running the suite. Every Feature test uses
 `RefreshDatabase` (configured globally in `tests/Pest.php`).
+
+### Versi & rilis
+
+Versi aplikasi berasal dari berkas **`VERSION`** di root project — satu sumber kebenaran yang
+melayani kedua cara instalasi kampus: klon Git mendapatkannya lewat `git pull` (VERSION ikut
+di-commit saat tagging), unduhan siap pakai lewat isi zip. Dibaca sekali di
+[config/sikampus.php](config/sikampus.php) supaya `config:cache` bisa membekukannya; nilainya
+jatuh ke `"dev"` kalau berkasnya tidak ada, dan itu keadaan normal untuk checkout pengembang —
+jangan bikin fitur apa pun mati karenanya.
+
+Alur rilis: tulis `VERSION` → commit → tag → `./scripts/build-release.sh <tag>` → unggah isi
+`dist/` ke GitHub Releases. Skrip itu membangun dari `git archive`, **bukan** dari direktori
+kerja, sehingga `.env` dan `plugins/` lokal mustahil ikut terbawa. Tiga artefak dihasilkan:
+zip, `.sha256`, dan **manifest sha256 per berkas**.
+
+Manifest itu yang nanti membuat update satu klik mungkin: mendeteksi berkas yang dimodifikasi
+lokal oleh kampus, dan berkas yang dihapus upstream (yang tidak akan hilang kalau update cuma
+menimpa). `vendor/` dan `public/build/` sengaja dikecualikan dari manifest — keduanya selalu
+diganti utuh saat update, jadi mendeteksi perubahan di dalamnya tidak mengubah keputusan apa pun.
+
+Dua jebakan saat menambah berkas ke daftar `PRUNE` di skrip build: `.gitignore` **tidak** melepas
+berkas yang sudah terlacak lebih dulu (itu sebabnya `.claude/` harus disebut eksplisit), dan
+`storage/**/.gitignore` justru **wajib** ikut karena itulah kerangka direktori yang dibutuhkan
+instalasi baru.
+
+Versi terpasang juga dikirim ke Sikampus Server oleh
+[InstallationReporter](app/Services/InstallationReporter.php) setiap license key disimpan.
 
 ### Pest test helpers (`tests/Pest.php`)
 
