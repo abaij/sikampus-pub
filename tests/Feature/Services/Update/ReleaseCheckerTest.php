@@ -133,3 +133,31 @@ it('returns null rather than a verdict when either version is not comparable', f
     expect($release->isNewerThan('dev'))->toBeNull();
     expect((new Release(version: 'nightly'))->isNewerThan('1.0.0'))->toBeNull();
 });
+
+// Kontrak antar-repo. Payload di bawah adalah jawaban SUNGGUHAN dari GET /api/releases/latest
+// milik sikampus-web (direkam saat endpoint itu dibuat, menghadap GitHub sungguhan) -- bukan
+// bentuk yang dikarang di sini. Kalau portal mengubah nama fieldnya, test ini gagal di repo
+// produk, yang memang tempat kegagalannya paling berguna terlihat: di sinilah field itu dibaca.
+it('parses the real response shape returned by the sikampus server endpoint', function () {
+    config(['sikampus_server.url' => 'https://app.sikampus.example']);
+
+    Http::fake(['app.sikampus.example/*' => Http::response([
+        'version' => 'v1.0.0',
+        'name' => 'Sikampus v 1.0.0',
+        'changelog' => '**Full Changelog**: https://github.com/sikampus-dev/sikampus-pub/commits/v1.0.0',
+        'published_at' => '2026-09-05T08:17:55Z',
+        'html_url' => 'https://github.com/sikampus-dev/sikampus-pub/releases/tag/v1.0.0',
+        'download_url' => 'https://github.com/sikampus-dev/sikampus-pub/releases/download/v1.0.0/sikampus-1.0.0.zip',
+        'checksum_url' => 'https://github.com/sikampus-dev/sikampus-pub/releases/download/v1.0.0/sikampus-1.0.0.zip.sha256',
+        'manifest_url' => 'https://github.com/sikampus-dev/sikampus-pub/releases/download/v1.0.0/sikampus-1.0.0.manifest.json',
+    ])]);
+
+    $release = app(ReleaseChecker::class)->latest()['release'];
+
+    expect($release->version)->toBe('v1.0.0');
+    expect($release->downloadUrl)->toEndWith('.zip');
+    expect($release->checksumUrl)->toEndWith('.zip.sha256');
+    expect($release->manifestUrl)->toEndWith('.manifest.json');
+    expect($release->publishedAt)->not->toBeNull();
+    expect($release->isNewerThan('0.9.0'))->toBeTrue();
+});

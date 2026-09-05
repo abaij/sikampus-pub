@@ -26,6 +26,7 @@ use App\Http\Controllers\Web\LoginController;
 use App\Http\Controllers\Web\MahasiswaExportController;
 use App\Http\Controllers\Web\NilaiExportController;
 use App\Http\Controllers\Web\SuperadminEnvConfigController;
+use App\Http\Controllers\Web\SuperadminMigrasiController;
 use App\Http\Controllers\Web\SuperadminTestUploadController;
 use App\Http\Controllers\Web\SuperadminWebLoginController;
 use App\Http\Controllers\YudisiumController;
@@ -262,7 +263,8 @@ Route::get('/dashboard', [SuperadminWebLoginController::class, 'dashboard'])
 Route::middleware(['auth', 'superadmin.web'])->group(function (): void {
     Route::get('/konfigurasi', [SuperadminEnvConfigController::class, 'edit'])->name('superadmin.konfigurasi');
     Route::put('/konfigurasi', [SuperadminEnvConfigController::class, 'update'])->name('superadmin.konfigurasi.update');
-    Route::view('/migrasi', 'superadmin.migrasi')->name('superadmin.migrasi');
+    Route::get('/migrasi', [SuperadminMigrasiController::class, 'index'])->name('superadmin.migrasi');
+    Route::post('/migrasi', [SuperadminMigrasiController::class, 'run'])->name('superadmin.migrasi.run');
     Route::get('/test-upload', [SuperadminTestUploadController::class, 'create'])->name('superadmin.test-upload');
     Route::post('/test-upload', [SuperadminTestUploadController::class, 'store'])->name('superadmin.test-upload.store');
 });

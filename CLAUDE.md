@@ -70,6 +70,40 @@ instalasi baru.
 Versi terpasang juga dikirim ke Sikampus Server oleh
 [InstallationReporter](app/Services/InstallationReporter.php) setiap license key disimpan.
 
+### Cek pembaruan
+
+Halaman **Pengaturan > Sistem > Cek Pembaruan**
+([Pembaruan](app/Livewire/Admin/Sistem/Pembaruan.php)) menampilkan versi terpasang vs versi
+rilis, changelog, dan hasil preflight. Sengaja **read-only** untuk sekarang: belum ada aksi yang
+mengubah berkas. Tombol update sungguhan menyusul setelah deteksi di sini terbukti melaporkan
+keadaan server dengan benar di lapangan.
+
+[ReleaseChecker](app/Services/Update/ReleaseChecker.php) mencoba Sikampus Server dulu
+(`SIKAMPUS_SERVER_URL`), lalu jatuh ke GitHub Releases. Jalur portal ada supaya instalasi
+sekalian melaporkan versinya; artefaknya sendiri tetap dari GitHub. Instalasi self-hosted yang
+tidak pernah mengisi license key tetap dapat pemberitahuan lewat jalur GitHub — pengecekan
+pembaruan tidak pernah dibatasi lisensi.
+
+Tiga hal yang mudah dirusak tanpa sengaja saat menyentuh area ini:
+
+- **Kegagalan jaringan ikut di-cache**, bukan hanya keberhasilan. Tanpa itu, sumber rilis yang
+  mati membuat setiap pembukaan halaman menunggu timeout penuh.
+- Perbandingan versi punya **tiga** hasil — ada update / sudah terbaru / **tidak diketahui**
+  (`Release::isNewerThan()` mengembalikan `null`). Checkout `dev` masuk yang ketiga; menjawab
+  "sudah terbaru" di situ sama menyesatkannya dengan menjawab "ada update".
+- Changelog berasal dari body GitHub Release, yaitu teks yang ditulis di luar aplikasi ini.
+  Dirender sebagai **teks biasa, tidak pernah sebagai HTML/Markdown** — ada test yang mengunci
+  perilaku itu.
+
+[InstallationInspector](app/Services/Update/InstallationInspector.php) melakukan preflight tanpa
+menjalankan proses apa pun: binary dicari lewat `ExecutableFinder` (menelusuri PATH), bukan
+dengan mengeksekusinya — justru server yang `proc_open`-nya dimatikan yang paling butuh
+jawabannya.
+
+**Pengaturan > Migrasi** (`/migrasi`, area superadmin web) menjalankan `migrate --force` dari
+panel, untuk instalasi yang diperbarui dengan mengganti berkas manual dan tidak punya akses
+shell. Sengaja hanya migrate maju — tidak pernah rollback/fresh/refresh.
+
 ### Pest test helpers (`tests/Pest.php`)
 
 - `adminUser(string $legacyRole = 'admin')` — creates a `User` with the legacy `role` column set,
